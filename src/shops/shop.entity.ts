@@ -50,6 +50,8 @@ export class Shop {
   @Column({ type: 'text', nullable: true }) ownerIdBackUrl: string | null;
   @Column({ type: 'varchar', length: 60, nullable: true }) tradeRegister: string | null;
   @Column({ type: 'jsonb', nullable: true }) hours: ShopHours | null;
+  /** Mise en avant sur l'accueil de l'app (choisie par l'équipe) */
+  @Column({ default: false }) featured: boolean;
   /** Interrupteur ouvert / fermé (vacances) */
   @Column({ default: true }) isOpen: boolean;
   @Index() @Column({ type: 'varchar', length: 10, default: ShopStatus.DRAFT }) status: ShopStatus;

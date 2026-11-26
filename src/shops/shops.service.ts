@@ -192,6 +192,14 @@ export class ShopsService {
     return this.review(id, by, ShopStatus.APPROVED, 'REACTIVATED', [ShopStatus.SUSPENDED]);
   }
 
+  async setFeatured(id: string, featured: boolean) {
+    const s = await this.repo.findOneBy({ id });
+    if (!s) throw new NotFoundException('Boutique introuvable');
+    s.featured = featured;
+    await this.repo.save(s);
+    return this.one(id);
+  }
+
   // ---------- Public ----------
 
   async publicList(categoryId?: string) {

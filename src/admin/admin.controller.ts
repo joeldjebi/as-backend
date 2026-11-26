@@ -42,7 +42,9 @@ export class AdminController {
               (SELECT count(*)::int FROM shops WHERE status = 'DRAFT') AS "shopsDraft",
               (SELECT count(*)::int FROM users WHERE "resellerStatus" = 'PENDING') AS "resellersPending",
               (SELECT count(*)::int FROM users WHERE "resellerStatus" = 'APPROVED') AS resellers,
-              (SELECT count(*)::int FROM categories WHERE "parentId" IS NULL AND active) AS categories`,
+              (SELECT count(*)::int FROM categories WHERE "parentId" IS NULL AND active) AS categories,
+              (SELECT count(*)::int FROM products WHERE status = 'ACTIVE') AS products,
+              (SELECT count(*)::int FROM products WHERE jsonb_array_length(reports) > 0 AND status <> 'REMOVED') AS "productsReported"`,
     );
     return r;
   }

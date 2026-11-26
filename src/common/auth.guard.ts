@@ -13,9 +13,20 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const targets = [ctx.getHandler(), ctx.getClass()];
-    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
     const req = ctx.switchToHttp().getRequest();
     const [type, token] = (req.headers.authorization ?? '').split(' ');
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) {
+      // Route publique : on reconnaît quand même le client s'il est connecté (prix de gros des revendeurs)
+      if (type === 'Bearer' && token) {
+        try {
+          req.user = await this.jwt.verifyAsync(token);
+          req.account = await this.users.findOneBy({ id: req.user.sub });
+        } catch {
+          req.user = undefined;
+        }
+      }
+      return true;
+    }
     if (type !== 'Bearer' || !token) throw new UnauthorizedException();
     try {
       req.user = await this.jwt.verifyAsync(token);

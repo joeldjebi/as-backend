@@ -21,3 +21,6 @@ export interface AuthUser {
 
 /** Utilisateur connecté (contenu du token JWT) */
 export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionContext): AuthUser => ctx.switchToHttp().getRequest().user);
+
+/** Compte connecté (chargé par le guard), ou undefined sur une route publique sans connexion */
+export const Account = createParamDecorator((_: unknown, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().account);

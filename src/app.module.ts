@@ -9,6 +9,9 @@ import { AuthService } from './auth/auth.service';
 import { CategoriesController, CategoriesService } from './categories/categories.controller';
 import { Category } from './categories/category.entity';
 import { AuthGuard } from './common/auth.guard';
+import { Product } from './products/product.entity';
+import { ProductsController } from './products/products.controller';
+import { ProductsService } from './products/products.service';
 import { Shop } from './shops/shop.entity';
 import { ShopsController } from './shops/shops.controller';
 import { ShopsService } from './shops/shops.service';
@@ -26,7 +29,7 @@ try {
   /* pas de .env : variables d'environnement seulement */
 }
 
-const entities = [User, Category, Shop];
+const entities = [User, Category, Shop, Product];
 
 @Module({
   imports: [
@@ -43,7 +46,7 @@ const entities = [User, Category, Shop];
     TypeOrmModule.forFeature(entities),
     JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'adjame-dev', signOptions: { expiresIn: '60d' } }),
   ],
-  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController],
-  providers: [AuthService, CategoriesService, ShopsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
+  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController],
+  providers: [AuthService, CategoriesService, ShopsService, ProductsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

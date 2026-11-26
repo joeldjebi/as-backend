@@ -43,6 +43,9 @@ class ShopDto {
 class NoteDto {
   @IsString() @IsNotEmpty({ message: 'Motif obligatoire' }) @MaxLength(500) note: string;
 }
+class FeaturedDto {
+  @IsBoolean() featured: boolean;
+}
 class StatusQuery {
   @IsOptional() @IsEnum(ShopStatus) status?: ShopStatus;
 }
@@ -128,6 +131,12 @@ export class ShopsController {
   @Staff(StaffRole.SUPER_ADMIN, StaffRole.MODERATOR)
   async reactivate(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.reactivate(id, await this.by(u));
+  }
+
+  @Post('admin/:id/featured')
+  @Staff(StaffRole.SUPER_ADMIN, StaffRole.MODERATOR)
+  featured(@Param('id', ParseUUIDPipe) id: string, @Body() dto: FeaturedDto) {
+    return this.service.setFeatured(id, dto.featured);
   }
 
   /** Après les routes « admin » et « mine » : page publique d'une boutique (slug ou id) */
