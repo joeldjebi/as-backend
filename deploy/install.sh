@@ -24,7 +24,7 @@ else
   set_env DB_NAME adjame_smart
   set_env DB_PASSWORD "$(openssl rand -hex 24)"
   set_env JWT_SECRET "$(openssl rand -hex 48)"
-  set_env CORS_ORIGIN "https://sa.vite.ci,https://boutique.vite.ci"
+  set_env CORS_ORIGIN "https://sa.vite.ci,https://boutique.vite.ci,https://as.vite.ci"
   echo "  Compte Super Admin du back-office (sa.vite.ci) :"
   read -r -p "    Nom : " sa_name
   read -r -p "    Téléphone (10 chiffres, ex. 0701020304) : " sa_phone
