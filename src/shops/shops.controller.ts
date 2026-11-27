@@ -40,6 +40,8 @@ class ShopDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @ValidateNested() @Type(() => HoursDto) hours?: HoursDto | null;
   @IsOptional() @IsBoolean() isOpen?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(10, { message: 'Acompte : 10 % minimum' }) @Max(100) prepayPercent?: number;
+  @IsOptional() @IsIn(['DIRECT', 'PLATFORM']) payoutMode?: 'DIRECT' | 'PLATFORM';
+  @IsOptional() @IsString() @MaxLength(60) pispiAlias?: string;
 }
 class NoteDto {
   @IsString() @IsNotEmpty({ message: 'Motif obligatoire' }) @MaxLength(500) note: string;

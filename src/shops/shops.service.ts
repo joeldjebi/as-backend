@@ -27,6 +27,7 @@ export interface ShopInput {
   logoUrl?: string; storefrontUrl?: string;
   ownerIdType?: string; ownerIdNumber?: string; ownerIdFrontUrl?: string; ownerIdBackUrl?: string; tradeRegister?: string;
   hours?: { open: string; close: string; days: number[] } | null; isOpen?: boolean; prepayPercent?: number;
+  payoutMode?: 'DIRECT' | 'PLATFORM'; pispiAlias?: string;
 }
 
 /** Éléments obligatoires pour envoyer le dossier */
@@ -108,6 +109,11 @@ export class ShopsService {
     if (dto.hours !== undefined) s.hours = dto.hours;
     if (dto.isOpen !== undefined) s.isOpen = dto.isOpen;
     if (dto.prepayPercent !== undefined) s.prepayPercent = dto.prepayPercent;
+    if (dto.pispiAlias !== undefined) s.pispiAlias = dto.pispiAlias.trim() || null;
+    if (dto.payoutMode !== undefined) {
+      if (dto.payoutMode === 'DIRECT' && !s.pispiAlias) throw new BadRequestException('Indiquez votre alias PI-SPI pour être payé directement');
+      s.payoutMode = dto.payoutMode;
+    }
   }
 
   private async checkCategories(ids: string[]) {

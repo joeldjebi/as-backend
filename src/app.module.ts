@@ -9,6 +9,10 @@ import { AuthService } from './auth/auth.service';
 import { CategoriesController, CategoriesService } from './categories/categories.controller';
 import { Category } from './categories/category.entity';
 import { AuthGuard } from './common/auth.guard';
+import { Order } from './orders/order.entity';
+import { LetoService } from './orders/leto.service';
+import { LetoWebhookController, OrdersController } from './orders/orders.controller';
+import { OrdersService } from './orders/orders.service';
 import { Product } from './products/product.entity';
 import { ProductsController } from './products/products.controller';
 import { ProductsService } from './products/products.service';
@@ -29,7 +33,7 @@ try {
   /* pas de .env : variables d'environnement seulement */
 }
 
-const entities = [User, Category, Shop, Product];
+const entities = [User, Category, Shop, Product, Order];
 
 @Module({
   imports: [
@@ -46,7 +50,7 @@ const entities = [User, Category, Shop, Product];
     TypeOrmModule.forFeature(entities),
     JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'adjame-dev', signOptions: { expiresIn: '60d' } }),
   ],
-  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController],
-  providers: [AuthService, CategoriesService, ShopsService, ProductsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
+  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController, OrdersController, LetoWebhookController],
+  providers: [AuthService, CategoriesService, ShopsService, ProductsService, OrdersService, LetoService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

@@ -5,7 +5,8 @@ import { AppModule } from './app.module';
 import { FriendlyErrorsFilter, validationExceptionFactory } from './common/friendly-errors';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody : vérification de la signature des webhooks LETO
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   // CORS : origines du back-office. Vide = toutes (développement). Les apps mobiles ne sont pas concernées.
   const origins = (process.env.CORS_ORIGIN ?? '').split(',').map((o) => o.trim()).filter(Boolean);
   app.enableCors(origins.length ? { origin: origins } : undefined);
