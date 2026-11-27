@@ -1,10 +1,10 @@
 /**
- * Boutiques de démonstration (une par rayon, 5 articles chacune) avec de vraies photos libres de droits (Pexels).
+ * Boutiques de démonstration (une par rayon, 5 articles chacune) avec de vraies photos libres de droits (Pixabay ou Pexels).
  *
  *   Créer :     node dist/seed/demo.js
  *   Supprimer : node dist/seed/demo.js --remove
  *
- * Demande la clé Pexels (jamais affichée ni enregistrée), le numéro du compte propriétaire et, si ce compte
+ * Demande la clé Pixabay ou Pexels (jamais affichée ni enregistrée), le numéro du compte propriétaire et, si ce compte
  * n'existe pas, son nom et son mot de passe. Sans danger si relancé : une boutique déjà créée est ignorée.
  * Les boutiques sont marquées « DEMO-ADJAME-SMART » (champ registre de commerce) pour pouvoir les retirer.
  */
@@ -60,33 +60,69 @@ function ask(question: string, hidden = false): Promise<string> {
   return new Promise((resolve) => { waiting = (line) => resolve(done(line)); });
 }
 
-/** Photos libres de droits Pexels (usage commercial autorisé, sans mention obligatoire) */
-class Pexels {
-  private used = new Set<number>();
-  constructor(private key: string, private storage: StorageService) {}
+/** Source de photos libres de droits (usage commercial autorisé, sans mention obligatoire) */
+abstract class PhotoSource {
+  protected used = new Set<string>();
+  constructor(protected key: string, private storage: StorageService) {}
+  abstract readonly label: string;
+  abstract check(): Promise<void>;
+  /** Adresses des photos trouvées pour la recherche (identifiant, adresse) */
+  protected abstract search(query: string, orientation: 'portrait' | 'landscape'): Promise<{ id: string; url: string }[]>;
 
-  async check() {
-    const r = await fetch('https://api.pexels.com/v1/search?query=market&per_page=1', { headers: { Authorization: this.key } });
-    if (r.status === 401 || r.status === 403) throw new Error('Clé Pexels refusée : vérifiez-la sur pexels.com/api');
-    if (!r.ok) throw new Error(`Pexels indisponible (HTTP ${r.status})`);
-  }
-
-  /** Télécharge `count` photos pour la recherche et les enregistre comme les photos envoyées par les vendeurs */
+  /** Télécharge `count` photos et les enregistre comme les photos envoyées par les vendeurs */
   async photos(query: string, count: number, orientation: 'portrait' | 'landscape' = 'portrait'): Promise<string[]> {
-    const r = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}`, { headers: { Authorization: this.key } });
-    if (!r.ok) throw new Error(`Recherche Pexels « ${query} » : HTTP ${r.status}`);
-    const data = (await r.json()) as { photos: { id: number; src: { large: string; large2x: string } }[] };
-    const picks = data.photos.filter((p) => !this.used.has(p.id)).slice(0, count);
+    const picks = (await this.search(query, orientation)).filter((p) => !this.used.has(p.id)).slice(0, count);
     const urls: string[] = [];
     for (const p of picks) {
       this.used.add(p.id);
-      const img = await fetch(p.src.large2x, { signal: AbortSignal.timeout(30_000) });
+      const img = await fetch(p.url, { signal: AbortSignal.timeout(30_000) });
       if (!img.ok) continue;
       const name = `${randomUUID()}.jpg`;
       await this.storage.save(name, Buffer.from(await img.arrayBuffer()), 'image/jpeg');
       urls.push(`/uploads/${name}`);
     }
     return urls;
+  }
+}
+
+/** Pixabay : clé gratuite et immédiate sur pixabay.com/api/docs (format 12345678-abc…) */
+class Pixabay extends PhotoSource {
+  readonly label = 'Pixabay (pixabay.com)';
+  private api(params: Record<string, string>) {
+    return fetch(`https://pixabay.com/api/?${new URLSearchParams({ key: this.key, image_type: 'photo', safesearch: 'true', per_page: '20', ...params })}`);
+  }
+  async check() {
+    const r = await this.api({ q: 'market' });
+    if (r.status === 400 || r.status === 401 || r.status === 403) throw new Error('Clé Pixabay refusée : vérifiez-la sur pixabay.com/api/docs');
+    if (!r.ok) throw new Error(`Pixabay indisponible (HTTP ${r.status})`);
+  }
+  protected async search(query: string, orientation: 'portrait' | 'landscape') {
+    // Pixabay limite à 100 recherches par minute : petite pause entre deux recherches
+    await new Promise((r) => setTimeout(r, 700));
+    const r = await this.api({ q: query.slice(0, 100), orientation: orientation === 'portrait' ? 'vertical' : 'horizontal' });
+    if (!r.ok) throw new Error(`Recherche Pixabay « ${query} » : HTTP ${r.status}`);
+    let hits = ((await r.json()) as { hits: { id: number; largeImageURL: string }[] }).hits;
+    if (!hits.length) {
+      const any = await this.api({ q: query.slice(0, 100) });
+      hits = any.ok ? ((await any.json()) as { hits: { id: number; largeImageURL: string }[] }).hits : [];
+    }
+    return hits.map((h) => ({ id: `x${h.id}`, url: h.largeImageURL }));
+  }
+}
+
+/** Pexels : clé gratuite sur pexels.com/api */
+class Pexels extends PhotoSource {
+  readonly label = 'Pexels (pexels.com)';
+  async check() {
+    const r = await fetch('https://api.pexels.com/v1/search?query=market&per_page=1', { headers: { Authorization: this.key } });
+    if (r.status === 401 || r.status === 403) throw new Error('Clé Pexels refusée : vérifiez-la sur pexels.com/api');
+    if (!r.ok) throw new Error(`Pexels indisponible (HTTP ${r.status})`);
+  }
+  protected async search(query: string, orientation: 'portrait' | 'landscape') {
+    const r = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}`, { headers: { Authorization: this.key } });
+    if (!r.ok) throw new Error(`Recherche Pexels « ${query} » : HTTP ${r.status}`);
+    const data = (await r.json()) as { photos: { id: number; src: { large2x: string } }[] };
+    return data.photos.map((p) => ({ id: `p${p.id}`, url: p.src.large2x }));
   }
 }
 
@@ -112,11 +148,12 @@ async function main() {
   }
 
   console.log('Boutiques de démonstration Adjamé-Smart\n');
-  const key = await ask('Clé API Pexels (ne s’affiche pas) : ', true);
-  if (!key) throw new Error('Clé Pexels obligatoire (gratuite sur pexels.com/api)');
-  const pexels = new Pexels(key, app.get(StorageService));
+  const key = await ask('Clé API Pixabay ou Pexels (ne s’affiche pas) : ', true);
+  if (!key) throw new Error('Clé obligatoire (gratuite sur pixabay.com/api/docs)');
+  // Les clés Pixabay ont la forme 12345678-0123456789abcdef…
+  const pexels: PhotoSource = /^\d+-[0-9a-f]{20,}$/i.test(key) ? new Pixabay(key, app.get(StorageService)) : new Pexels(key, app.get(StorageService));
   await pexels.check();
-  console.log('✓ Clé Pexels acceptée');
+  console.log(`✓ Clé acceptée : photos ${pexels.label}`);
 
   const phone = normalizePhone(await ask('Numéro du compte propriétaire des boutiques (ex. 0701020304) : '));
   if (!phone) throw new Error('Numéro invalide');
@@ -182,7 +219,7 @@ async function main() {
   }
 
   console.log(`\nTerminé : ${createdShops} boutique(s) et ${createdProducts} article(s) créés.`);
-  console.log('Photos : Pexels (pexels.com), libres d’usage commercial.');
+  console.log(`Photos : ${pexels.label}, libres d’usage commercial.`);
   console.log('Pour tout retirer plus tard : node dist/seed/demo.js --remove');
   rl?.close();
   await app.close();
