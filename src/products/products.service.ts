@@ -14,7 +14,7 @@ export { fold };
 
 export interface ProductInput {
   shopId?: string; categoryId?: string; name?: string; description?: string; photos?: string[];
-  price?: number; wholesalePrice?: number | null; wholesaleMinQty?: number | null; stock?: number | null;
+  price?: number; wholesalePrice?: number | null; wholesaleMinQty?: number | null; stock?: number | null; prepayPercent?: number | null;
   variants?: { id?: string; label: string; price?: number | null; stock?: number | null }[]; active?: boolean;
 }
 
@@ -70,6 +70,8 @@ export class ProductsService implements OnModuleInit {
       id: p.id, shopId: p.shopId, categoryId: p.categoryId, name: p.name, description: p.description, photos: p.photos,
       price: p.price, variants: p.variants, stock, inStock: stock == null || stock > 0,
       hasWholesale: p.wholesalePrice != null,
+      // Part à payer à la commande (Mobile Money), le reste à la livraison
+      prepayPercent: p.prepayPercent ?? shop?.prepayPercent ?? 100,
       wholesalePrice: reseller ? p.wholesalePrice : null,
       wholesaleMinQty: reseller ? p.wholesaleMinQty : null,
       shop: shop && { id: shop.id, name: shop.name, slug: shop.slug, type: shop.type, market: shop.market, logoUrl: shop.logoUrl, isOpen: shop.isOpen },
@@ -137,6 +139,7 @@ export class ProductsService implements OnModuleInit {
       p.wholesaleMinQty = null;
     }
     if (dto.stock !== undefined) p.stock = dto.stock;
+    if (dto.prepayPercent !== undefined) p.prepayPercent = dto.prepayPercent;
     if (dto.variants !== undefined) {
       const labels = new Set<string>();
       p.variants = dto.variants.slice(0, 30).map((v) => {

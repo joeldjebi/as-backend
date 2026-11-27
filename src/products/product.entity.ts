@@ -38,6 +38,8 @@ export class Product {
   /** Stock (null = non suivi) ; avec des variantes, le stock est celui des variantes */
   @Column({ type: 'int', nullable: true }) stock: number | null;
   @Column({ type: 'jsonb', default: () => "'[]'" }) variants: ProductVariant[];
+  /** Part payée à la commande (10 à 100 %), le reste à la livraison ; null = réglage de la boutique */
+  @Column({ type: 'int', nullable: true }) prepayPercent: number | null;
   @Index() @Column({ type: 'varchar', length: 10, default: ProductStatus.ACTIVE }) status: ProductStatus;
   @Column({ type: 'text', nullable: true }) moderationNote: string | null;
   @Column({ type: 'text', nullable: true }) moderatedBy: string | null;

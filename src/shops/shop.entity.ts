@@ -55,6 +55,8 @@ export class Shop {
   @Column({ default: false }) featured: boolean;
   /** Interrupteur ouvert / fermé (vacances) */
   @Column({ default: true }) isOpen: boolean;
+  /** Part de la marchandise payée à la commande (10 à 100 %), le reste à la livraison ; valeur par défaut des produits */
+  @Column({ type: 'int', default: 100 }) prepayPercent: number;
   @Index() @Column({ type: 'varchar', length: 10, default: ShopStatus.DRAFT }) status: ShopStatus;
   @Column({ type: 'text', nullable: true }) reviewNote: string | null;
   @Column({ type: 'text', nullable: true }) reviewedBy: string | null;

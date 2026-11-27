@@ -29,6 +29,7 @@ class ProductDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsInt() @Min(2) @Max(100_000) wholesaleMinQty?: number | null;
   @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsInt() @Min(0) @Max(1_000_000) stock?: number | null;
   @IsOptional() @IsArray() @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => VariantDto) variants?: VariantDto[];
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number) @IsInt() @Min(10, { message: 'Acompte : 10 % minimum' }) @Max(100) prepayPercent?: number | null;
   @IsOptional() @IsBoolean() active?: boolean;
 }
 const num = ({ value }: { value: unknown }) => (value === undefined || value === '' ? undefined : Number(value));

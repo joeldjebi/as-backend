@@ -39,6 +39,7 @@ class ShopDto {
   @IsOptional() @IsString() @MaxLength(60) tradeRegister?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null) @ValidateNested() @Type(() => HoursDto) hours?: HoursDto | null;
   @IsOptional() @IsBoolean() isOpen?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(10, { message: 'Acompte : 10 % minimum' }) @Max(100) prepayPercent?: number;
 }
 class NoteDto {
   @IsString() @IsNotEmpty({ message: 'Motif obligatoire' }) @MaxLength(500) note: string;

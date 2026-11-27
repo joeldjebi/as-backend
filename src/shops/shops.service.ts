@@ -26,7 +26,7 @@ export interface ShopInput {
   market?: string; location?: string; lat?: number; lng?: number; categoryIds?: string[];
   logoUrl?: string; storefrontUrl?: string;
   ownerIdType?: string; ownerIdNumber?: string; ownerIdFrontUrl?: string; ownerIdBackUrl?: string; tradeRegister?: string;
-  hours?: { open: string; close: string; days: number[] } | null; isOpen?: boolean;
+  hours?: { open: string; close: string; days: number[] } | null; isOpen?: boolean; prepayPercent?: number;
 }
 
 /** Éléments obligatoires pour envoyer le dossier */
@@ -107,6 +107,7 @@ export class ShopsService {
     if (dto.categoryIds) s.categoryIds = [...new Set(dto.categoryIds)].slice(0, 5);
     if (dto.hours !== undefined) s.hours = dto.hours;
     if (dto.isOpen !== undefined) s.isOpen = dto.isOpen;
+    if (dto.prepayPercent !== undefined) s.prepayPercent = dto.prepayPercent;
   }
 
   private async checkCategories(ids: string[]) {
