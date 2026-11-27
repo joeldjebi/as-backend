@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Q
 import type { RawBodyRequest } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsIn, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import type { Request } from 'express';
 import { Repository } from 'typeorm';
 import { AuthUser, CurrentUser, Public, Roles, Staff } from '../common/decorators';
@@ -31,6 +31,11 @@ class CheckoutDto {
   @IsOptional() @IsString() @MaxLength(100) recipientName?: string;
   @IsPhone({ optional: true, message: `Téléphone du destinataire : ${PHONE_MESSAGE}` }) recipientPhone?: string;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsIn(['MOTO', 'CAR', 'CARGO'], { message: 'Engin inconnu' }) vehicleType?: 'MOTO' | 'CAR' | 'CARGO';
+  @IsOptional() @IsIn(['EXPRESS', 'STANDARD', 'SCHEDULED'], { message: 'Délai inconnu' }) speed?: 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
+}
+class PriceDto {
+  @Type(() => Number) @IsInt() @Min(1) price: number;
 }
 class DeclareDto {
   @IsString() @IsNotEmpty({ message: 'Indiquez la référence de la transaction' }) @MaxLength(80) reference: string;
@@ -75,6 +80,34 @@ export class OrdersController {
   @Roles(Role.CUSTOMER)
   track(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.trackForCustomer(u.sub, id);
+  }
+
+  // Négociation du prix de livraison avec les livreurs VITE
+  @Get('mine/:id/offers')
+  @Roles(Role.CUSTOMER)
+  offers(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.offersForCustomer(u.sub, id);
+  }
+
+  @Post('mine/:id/offers/:offerId/accept')
+  @HttpCode(200)
+  @Roles(Role.CUSTOMER)
+  acceptOffer(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('offerId', ParseUUIDPipe) offerId: string) {
+    return this.service.acceptOffer(u.sub, id, offerId);
+  }
+
+  @Post('mine/:id/offers/:offerId/decline')
+  @HttpCode(200)
+  @Roles(Role.CUSTOMER)
+  declineOffer(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('offerId', ParseUUIDPipe) offerId: string) {
+    return this.service.declineOffer(u.sub, id, offerId);
+  }
+
+  @Post('mine/:id/offers/:offerId/counter')
+  @HttpCode(200)
+  @Roles(Role.CUSTOMER)
+  counterOffer(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('offerId', ParseUUIDPipe) offerId: string, @Body() dto: PriceDto) {
+    return this.service.counterOffer(u.sub, id, offerId, dto.price);
   }
 
   @Post('mine/:id/payment')

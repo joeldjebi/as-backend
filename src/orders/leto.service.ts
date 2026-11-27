@@ -26,6 +26,23 @@ export interface LetoCreate {
 /** Erreur VITE lisible (message déjà en français côté VITE) */
 export class LetoError extends Error {}
 
+export type VehicleType = 'MOTO' | 'CAR' | 'CARGO';
+export type DeliverySpeed = 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
+/** Proposition d'un livreur sur une course en attente (2 min pour répondre) */
+export interface LetoOffer {
+  id: string;
+  price: number;
+  counterPrice: number | null;
+  awaiting: 'CLIENT' | 'DRIVER';
+  minCounter: number;
+  expiresAt: string;
+  driver: { name: string; avatarUrl?: string | null; vehicleType?: string | null };
+  independent?: boolean;
+  company?: { name: string } | null;
+  etaMin: number | null;
+}
+export interface DeliveryOption { vehicleType: VehicleType; speed: DeliverySpeed; price: number }
+
 /**
  * Client de l'API partenaire VITE : devis, création et suivi des courses, vérification des webhooks.
  * Configuration : LETO_API_URL (ex. https://api.vite.ci), LETO_API_KEY, LETO_WEBHOOK_SECRET.
@@ -53,6 +70,20 @@ export class LetoService {
     }
     if (!res.ok) throw new ServiceUnavailableException('Suivi indisponible pour le moment');
     return res.json();
+  }
+
+  // ----- Propositions de prix des livreurs -----
+  offers(deliveryId: string) {
+    return this.call<LetoOffer[]>('GET', `/deliveries/${deliveryId}/offers`);
+  }
+  acceptOffer(offerId: string) {
+    return this.call<{ ok: boolean; price: number }>('POST', `/offers/${offerId}/accept`);
+  }
+  declineOffer(offerId: string) {
+    return this.call<{ ok: boolean }>('POST', `/offers/${offerId}/decline`);
+  }
+  counterOffer(offerId: string, price: number) {
+    return this.call<{ ok: boolean; counterPrice: number }>('POST', `/offers/${offerId}/counter`, { price });
   }
 
   /** Recherche d'adresse (quartiers et lieux d'Abidjan) */
@@ -99,12 +130,12 @@ export class LetoService {
     return data as T;
   }
 
-  /** Prix d'une course moto standard (null si indisponible) */
-  async quote(pickup: { lat: number; lng: number }, stop: { lat: number; lng: number; codAmount?: number }): Promise<number | null> {
+  /** Prix de chaque type de livraison proposé par VITE (engin × délai) ; null si indisponible */
+  async quoteOptions(pickup: { lat: number; lng: number }, stop: { lat: number; lng: number; codAmount?: number }): Promise<DeliveryOption[] | null> {
     if (!this.configured) return null;
     try {
-      const q = await this.call<{ prices: { vehicleType: string; speed: string; price: number }[] }>('POST', '/quotes', { pickup, stops: [stop] });
-      return q.prices.find((p) => p.vehicleType === 'MOTO' && p.speed === 'STANDARD')?.price ?? q.prices[0]?.price ?? null;
+      const q = await this.call<{ prices: DeliveryOption[] }>('POST', '/quotes', { pickup, stops: [stop] });
+      return q.prices.length ? q.prices.map((p) => ({ vehicleType: p.vehicleType, speed: p.speed, price: p.price })) : null;
     } catch {
       return null;
     }

@@ -6,7 +6,7 @@ import { Product, ProductStatus } from '../products/product.entity';
 import { Shop, ShopStatus } from '../shops/shop.entity';
 import { User } from '../users/user.entity';
 import { SettingsService } from '../settings/settings.service';
-import { LetoDelivery, LetoError, LetoService } from './leto.service';
+import { DeliveryOption, DeliverySpeed, LetoDelivery, LetoError, LetoService, VehicleType } from './leto.service';
 import { Order, OrderAddress, OrderItem, OrderStatus } from './order.entity';
 
 export interface CheckoutInput {
@@ -16,7 +16,14 @@ export interface CheckoutInput {
   recipientName?: string;
   recipientPhone?: string;
   note?: string;
+  /** Type de livraison choisi (par défaut moto, standard) */
+  vehicleType?: VehicleType;
+  speed?: DeliverySpeed;
 }
+
+/** Prix du type choisi parmi ceux de VITE (sinon moto standard, sinon le premier) */
+const pick = (opts: DeliveryOption[] | null, v: VehicleType, sp: DeliverySpeed) =>
+  opts?.find((o) => o.vehicleType === v && o.speed === sp) ?? null;
 
 /** Statuts VITE → libellé client (suivi) */
 const DELIVERY_LABEL: Record<string, string> = {
@@ -74,25 +81,42 @@ export class OrdersService {
 
   // ---------- Client ----------
 
-  /** Devis : montants par boutique et estimation des frais de livraison VITE */
+  /** Devis : montants par boutique, types de livraison proposés et frais du type choisi */
   async quote(userId: string, dto: CheckoutInput) {
     const { groups, address } = await this.prepare(userId, dto, false);
+    const v = dto.vehicleType ?? 'MOTO';
+    const sp = dto.speed ?? 'STANDARD';
     const lines = await Promise.all(
-      groups.map(async (g) => ({
-        shopId: g.shop.id,
-        shopName: g.shop.name,
-        goodsTotal: g.goodsTotal,
-        dueNow: g.dueNow,
-        dueOnDelivery: g.goodsTotal - g.dueNow,
-        deliveryFeeEstimate: address && g.shop.lat != null ? await this.leto.quote({ lat: g.shop.lat, lng: g.shop.lng! }, { lat: address.lat, lng: address.lng, codAmount: g.goodsTotal - g.dueNow }) : null,
-        payment: this.payee(g.shop),
-      })),
+      groups.map(async (g) => {
+        const options = address && g.shop.lat != null ? await this.leto.quoteOptions({ lat: g.shop.lat, lng: g.shop.lng! }, { lat: address.lat, lng: address.lng, codAmount: g.goodsTotal - g.dueNow }) : null;
+        return {
+          shopId: g.shop.id,
+          shopName: g.shop.name,
+          goodsTotal: g.goodsTotal,
+          dueNow: g.dueNow,
+          dueOnDelivery: g.goodsTotal - g.dueNow,
+          deliveryOptions: options,
+          deliveryFeeEstimate: pick(options, v, sp)?.price ?? null,
+          payment: this.payee(g.shop),
+        };
+      }),
     );
+    // Types proposés pour tout le panier : disponibles pour chaque boutique (une course par boutique, prix additionnés)
+    const all = lines.every((l) => l.deliveryOptions) ? lines[0]?.deliveryOptions ?? [] : [];
+    const deliveryOptions = all
+      .map((o) => {
+        const prices = lines.map((l) => pick(l.deliveryOptions, o.vehicleType, o.speed)?.price);
+        return prices.every((x) => x != null) ? { vehicleType: o.vehicleType, speed: o.speed, price: prices.reduce((t, x) => t + x!, 0) } : null;
+      })
+      .filter((o): o is DeliveryOption => !!o);
     return {
       shops: lines,
       goodsTotal: lines.reduce((t, l) => t + l.goodsTotal, 0),
       dueNow: lines.reduce((t, l) => t + l.dueNow, 0),
       dueOnDelivery: lines.reduce((t, l) => t + l.dueOnDelivery, 0),
+      deliveryOptions,
+      vehicleType: v,
+      speed: sp,
       deliveryFeeEstimate: lines.every((l) => l.deliveryFeeEstimate != null) ? lines.reduce((t, l) => t + (l.deliveryFeeEstimate ?? 0), 0) : null,
     };
   }
@@ -148,7 +172,13 @@ export class OrdersService {
     const recipientPhone = dto.recipientPhone?.trim() || user.phone;
     const checkoutId = randomUUID();
     // Estimation des frais de livraison (hors transaction : appel réseau)
-    const fees = await Promise.all(groups.map((g) => (g.shop.lat != null ? this.leto.quote({ lat: g.shop.lat, lng: g.shop.lng! }, { lat: address!.lat, lng: address!.lng, codAmount: g.goodsTotal - g.dueNow }) : Promise.resolve(null))));
+    const vehicleType = dto.vehicleType ?? 'MOTO';
+    const speed = dto.speed ?? 'STANDARD';
+    const fees = await Promise.all(
+      groups.map(async (g) =>
+        g.shop.lat != null ? (pick(await this.leto.quoteOptions({ lat: g.shop.lat, lng: g.shop.lng! }, { lat: address!.lat, lng: address!.lng, codAmount: g.goodsTotal - g.dueNow }), vehicleType, speed)?.price ?? null) : null,
+      ),
+    );
     const created = await this.db.transaction(async (m) => {
       const out: Order[] = [];
       for (const [i, g] of groups.entries()) {
@@ -157,7 +187,7 @@ export class OrdersService {
         const fee = fees[i];
         const o = m.getRepository(Order).create({
           checkoutId, customerId: user.id, shopId: g.shop.id, shopName: g.shop.name, items: g.items,
-          goodsTotal: g.goodsTotal, dueNow: g.dueNow, dueOnDelivery: g.goodsTotal - g.dueNow, deliveryFeeEstimate: fee,
+          goodsTotal: g.goodsTotal, dueNow: g.dueNow, dueOnDelivery: g.goodsTotal - g.dueNow, deliveryFeeEstimate: fee, vehicleType, speed,
           address: address!, recipientName, recipientPhone, note: dto.note?.trim() || null,
           status: OrderStatus.AWAITING_PAYMENT, payment: this.payee(g.shop), delivery: {}, history: [],
         });
@@ -197,6 +227,61 @@ export class OrdersService {
     const token = trackingToken(o.delivery?.trackingUrl);
     if (!token) throw new NotFoundException('Suivi disponible dès qu’un livreur est demandé');
     return this.leto.track(token);
+  }
+
+  // ---------- Négociation du prix de livraison (propositions des livreurs VITE) ----------
+
+  private async searching(userId: string, id: string) {
+    const o = await this.repo.findOneBy({ id });
+    if (!o || o.customerId !== userId) throw new NotFoundException('Commande introuvable');
+    return o;
+  }
+
+  /** Propositions en cours : seulement pendant la recherche d'un livreur */
+  async offersForCustomer(userId: string, id: string) {
+    const o = await this.searching(userId, id);
+    if (o.status !== OrderStatus.IN_DELIVERY || !o.delivery?.deliveryId || o.delivery.status !== 'PENDING') return [];
+    const list = await this.leto.offers(o.delivery.deliveryId).catch(() => []);
+    return list.map((x) => ({ ...x, driver: { name: x.driver.name, vehicleType: x.driver.vehicleType ?? null } }));
+  }
+
+  /** La proposition doit concerner la course de cette commande */
+  private async ownOffer(userId: string, id: string, offerId: string) {
+    const o = await this.searching(userId, id);
+    if (!o.delivery?.deliveryId) throw new BadRequestException('Aucune course en attente pour cette commande');
+    const list = await this.leto.offers(o.delivery.deliveryId).catch(() => []);
+    if (!list.some((x) => x.id === offerId)) throw new BadRequestException('Cette proposition a expiré : d’autres livreurs peuvent encore accepter votre course');
+    return o;
+  }
+
+  /** Message utile au client (fourchette de prix, délai écoulé), sinon un message rassurant */
+  private async letoAction<T>(fn: () => Promise<T>) {
+    try {
+      return await fn();
+    } catch (e) {
+      const m = e instanceof LetoError ? e.message : '';
+      const useful = /Proposez|expir|déjà|plus disponible|autre proposition/i.test(m);
+      throw new BadRequestException(useful ? m : 'Un instant : nous préparons votre livraison, réessayez dans quelques secondes');
+    }
+  }
+
+  async acceptOffer(userId: string, id: string, offerId: string) {
+    const o = await this.ownOffer(userId, id, offerId);
+    const r = await this.letoAction(() => this.leto.acceptOffer(offerId));
+    this.log(o, 'OFFER_ACCEPTED', 'Client', `Livraison à ${r.price} F`);
+    await this.repo.save(o);
+    return this.view(await this.refreshDelivery(o, true));
+  }
+
+  async declineOffer(userId: string, id: string, offerId: string) {
+    await this.ownOffer(userId, id, offerId);
+    await this.letoAction(() => this.leto.declineOffer(offerId));
+    return { ok: true };
+  }
+
+  async counterOffer(userId: string, id: string, offerId: string, price: number) {
+    await this.ownOffer(userId, id, offerId);
+    return this.letoAction(() => this.leto.counterOffer(offerId, price));
   }
 
   async oneForCustomer(userId: string, id: string) {
@@ -350,8 +435,8 @@ export class OrdersService {
       const d = await this.leto.create(
         {
           reference: o.number,
-          vehicleType: 'MOTO',
-          speed: 'STANDARD',
+          vehicleType: o.vehicleType ?? 'MOTO',
+          speed: o.speed ?? 'STANDARD',
           pickup: { lat: shop.lat, lng: shop.lng, address: [shop.location, shop.market, 'Adjamé'].filter(Boolean).join(', '), phone: shop.phone, contactName: shop.name },
           stops: [{
             lat: o.address.lat, lng: o.address.lng,
@@ -409,9 +494,9 @@ export class OrdersService {
   }
 
   /** Mise à jour depuis VITE à la consultation (si le dernier état date de plus de 20 s) */
-  private async refreshDelivery(o: Order) {
+  private async refreshDelivery(o: Order, force = false) {
     if (o.status !== OrderStatus.IN_DELIVERY || !o.delivery?.deliveryId || !this.leto.configured) return o;
-    if (o.delivery.updatedAt && Date.now() - Date.parse(o.delivery.updatedAt) < REFRESH_EVERY_MS) return o;
+    if (!force && o.delivery.updatedAt && Date.now() - Date.parse(o.delivery.updatedAt) < REFRESH_EVERY_MS) return o;
     try {
       this.applyDelivery(o, await this.leto.get(o.delivery.deliveryId));
       return this.repo.save(o);
