@@ -6,6 +6,7 @@ import { Product, ProductStatus } from '../products/product.entity';
 import { Shop, ShopStatus } from '../shops/shop.entity';
 import { User } from '../users/user.entity';
 import { SettingsService } from '../settings/settings.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { DeliveryOption, DeliverySpeed, LetoDelivery, LetoError, LetoService, VehicleType } from './leto.service';
 import { Order, OrderAddress, OrderItem, OrderStatus } from './order.entity';
 
@@ -53,7 +54,11 @@ export class OrdersService {
     private leto: LetoService,
     private settings: SettingsService,
     private db: DataSource,
+    private rt: RealtimeGateway,
   ) {}
+
+  /** Propositions déjà signalées au client */
+  private notifiedOffers = new Set<string>();
 
   // ---------- Vues ----------
 
@@ -514,6 +519,20 @@ export class OrdersService {
     const o = (await this.repo.createQueryBuilder('o').where(`o.delivery->>'deliveryId' = :id`, { id: d.id }).getOne())
       ?? (d.reference ? await this.repo.findOneBy({ seq: Number(d.reference.replace(/^AS-/, '')) - 1000 }) : null);
     if (!o) return { ok: true };
+    // Propositions de prix des livreurs : le client est prévenu en direct (une notification par nouvelle proposition)
+    if (body.event === 'delivery.offers') {
+      const offers = await this.leto.offers(d.id).catch(() => []);
+      const fresh = offers.filter((x) => x.awaiting === 'CLIENT' && !this.notifiedOffers.has(x.id));
+      fresh.forEach((x) => this.notifiedOffers.add(x.id));
+      if (this.notifiedOffers.size > 5000) this.notifiedOffers.clear();
+      const top = fresh[0];
+      this.rt.emit(`user:${o.customerId}`, 'order:offers', {
+        id: o.id,
+        number: o.number,
+        notice: top ? { title: `${top.driver.name} propose ${top.price} F`, body: 'Acceptez, refusez ou faites votre offre dans votre commande.' } : null,
+      });
+      return { ok: true };
+    }
     if (body.id && o.delivery?.events?.includes(body.id)) return { ok: true, duplicate: true };
     this.applyDelivery(o, d);
     o.delivery.events = [...(o.delivery.events ?? []), ...(body.id ? [body.id] : [])].slice(-50);

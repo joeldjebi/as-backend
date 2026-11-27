@@ -11,6 +11,8 @@ import { Category } from './categories/category.entity';
 import { AuthGuard } from './common/auth.guard';
 import { Order } from './orders/order.entity';
 import { LetoService } from './orders/leto.service';
+import { OrderSubscriber } from './realtime/order.subscriber';
+import { RealtimeGateway } from './realtime/realtime.gateway';
 import { GeoController, LetoWebhookController, OrdersController } from './orders/orders.controller';
 import { OrdersService } from './orders/orders.service';
 import { Product } from './products/product.entity';
@@ -53,6 +55,6 @@ const entities = [User, Category, Shop, Product, Order, Setting];
     JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'adjame-dev', signOptions: { expiresIn: '60d' } }),
   ],
   controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController, OrdersController, LetoWebhookController, GeoController, SettingsController],
-  providers: [AuthService, CategoriesService, ShopsService, ProductsService, OrdersService, LetoService, SettingsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [AuthService, CategoriesService, ShopsService, ProductsService, OrdersService, LetoService, RealtimeGateway, OrderSubscriber, SettingsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}
