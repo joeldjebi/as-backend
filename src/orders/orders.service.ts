@@ -64,6 +64,7 @@ export class OrdersService {
       // Lien vers la page de suivi de VITE (espace web), quel que soit le format renvoyé par VITE
       delivery: o.delivery ? { ...o.delivery, trackingUrl: token ? `${TRACKING_PAGE()}${token}` : null, trackable: !!token } : o.delivery,
       number: o.number,
+      vehicleName: this.leto.vehicles.find((x) => x.code === o.vehicleType)?.name ?? null,
       deliveryLabel: o.delivery?.status ? (DELIVERY_LABEL[o.delivery.status] ?? o.delivery.status) : null,
     };
   }
