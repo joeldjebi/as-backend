@@ -80,9 +80,10 @@ export class OrderSubscriber implements EntitySubscriberInterface<Order> {
     const base = { id: o.id, number: num(o), status: o.status, deliveryStatus: o.delivery?.status ?? null };
     // Après la validation de la transaction : les écrans relisent une commande à jour
     setTimeout(() => {
-      this.rt.emit(`user:${o.customerId}`, 'order:changed', { ...base, notice: customer });
-      this.rt.emit(`shop:${o.shopId}`, 'order:changed', { ...base, notice: shop });
-      this.rt.emit('admin', 'order:changed', { ...base, notice: admin });
+      // audience : à qui s'adresse le message (un client peut aussi être propriétaire d'une boutique)
+      this.rt.emit(`user:${o.customerId}`, 'order:changed', { ...base, audience: 'customer', notice: customer });
+      this.rt.emit(`shop:${o.shopId}`, 'order:changed', { ...base, audience: 'shop', shopId: o.shopId, notice: shop });
+      this.rt.emit('admin', 'order:changed', { ...base, audience: 'admin', notice: admin });
     }, 300);
   }
 }

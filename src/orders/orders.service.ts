@@ -527,6 +527,7 @@ export class OrdersService {
       if (this.notifiedOffers.size > 5000) this.notifiedOffers.clear();
       const top = fresh[0];
       this.rt.emit(`user:${o.customerId}`, 'order:offers', {
+        audience: 'customer',
         id: o.id,
         number: o.number,
         notice: top ? { title: `${top.driver.name} propose ${top.price} F`, body: 'Acceptez, refusez ou faites votre offre dans votre commande.' } : null,

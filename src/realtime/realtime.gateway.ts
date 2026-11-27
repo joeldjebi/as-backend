@@ -16,7 +16,8 @@ export interface Notice { title: string; body: string }
  *
  * Salles : `user:<id>` (client), `shop:<id>` (boutique, son propriétaire), `admin` (équipe Adjamé-Smart).
  * Événements :
- *  - `order:changed` { id, number, status, deliveryStatus, notice? } → l'écran relit la commande
+ *  - `order:changed` { id, number, status, deliveryStatus, audience: 'customer' | 'shop' | 'admin', shopId?, notice? }
+ *    → l'écran relit la commande ; chaque espace n'affiche que les messages de son audience
  *  - `order:offers`  { id, number, notice? } → un livreur propose un prix (le client relit les propositions)
  */
 @WebSocketGateway({ cors: { origin: '*' } })
