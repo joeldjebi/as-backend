@@ -28,7 +28,8 @@ echo "== Vitrine (as.vite.ci) et espace boutique (boutique.vite.ci)"
 for pair in "vitrine:$VITRINE_DIR" "dist-boutique:$BOUTIQUE_DIR"; do
   src="${pair%%:*}"; dst="${pair#*:}"
   mkdir -p "$dst"
-  rsync -a --delete --exclude ".well-known" "$src/" "$dst/"
+  # L'APK de l'app (envoyé à part) est conservé
+  rsync -a --delete --exclude ".well-known" --exclude "adjame-smart.apk" "$src/" "$dst/"
   chown -R "$CPUSER:$CPUSER" "$dst"
 done
 echo "Mise à jour terminée."
