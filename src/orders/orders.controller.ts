@@ -163,7 +163,7 @@ export class OrdersController {
   }
 }
 
-/** Événements de livraison envoyés par LETO (signés) */
+/** Événements de livraison envoyés par VITE (signés) */
 @Controller('webhooks')
 export class LetoWebhookController {
   constructor(private service: OrdersService, private leto: LetoService) {}

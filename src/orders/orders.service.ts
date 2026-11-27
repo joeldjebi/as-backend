@@ -17,7 +17,7 @@ export interface CheckoutInput {
   note?: string;
 }
 
-/** Statuts LETO → libellé client (suivi) */
+/** Statuts VITE → libellé client (suivi) */
 const DELIVERY_LABEL: Record<string, string> = {
   PENDING: 'Recherche d’un livreur',
   ACCEPTED: 'Livreur en route vers la boutique',
@@ -63,7 +63,7 @@ export class OrdersService {
 
   // ---------- Client ----------
 
-  /** Devis : montants par boutique et estimation des frais de livraison LETO */
+  /** Devis : montants par boutique et estimation des frais de livraison VITE */
   async quote(userId: string, dto: CheckoutInput) {
     const { groups, address } = await this.prepare(userId, dto, false);
     const lines = await Promise.all(
@@ -234,7 +234,7 @@ export class OrdersService {
     return { o, shop };
   }
 
-  /** La boutique confirme avoir reçu le paiement (encaissement direct) : la course LETO part */
+  /** La boutique confirme avoir reçu le paiement (encaissement direct) : la course VITE part */
   async shopConfirmPayment(userId: string, id: string) {
     const { o, shop } = await this.shopOrder(userId, id);
     if (o.payment.mode !== 'DIRECT') throw new BadRequestException('Ce paiement est reçu par Adjamé-Smart : il sera confirmé par l’équipe');
@@ -292,7 +292,7 @@ export class OrdersService {
   async adminCancel(id: string, by: string, reason: string) {
     const o = await this.repo.findOneBy({ id });
     if (!o) throw new NotFoundException('Commande introuvable');
-    if (o.status === OrderStatus.IN_DELIVERY || o.status === OrderStatus.DELIVERED) throw new BadRequestException('Livraison déjà lancée : annulez la course dans LETO');
+    if (o.status === OrderStatus.IN_DELIVERY || o.status === OrderStatus.DELIVERED) throw new BadRequestException('Livraison déjà lancée : annulez la course dans VITE');
     return this.view(await this.cancel(o, by, reason.trim()));
   }
 
@@ -316,7 +316,7 @@ export class OrdersService {
   }
 
   /**
-   * Lance la course LETO : départ = boutique, arrivée = client ; le livreur encaisse le reste de la marchandise
+   * Lance la course VITE : départ = boutique, arrivée = client ; le livreur encaisse le reste de la marchandise
    * (codAmount) et ses frais (payés par le destinataire). En cas d'échec, la commande reste « payée » et peut être relancée.
    */
   private async requestDelivery(o: Order): Promise<Order> {
@@ -353,10 +353,10 @@ export class OrdersService {
       o.delivery.requestedAt = new Date().toISOString();
       o.delivery.error = null;
       o.status = OrderStatus.IN_DELIVERY;
-      this.log(o, o.status, 'LETO', 'Course de livraison créée');
+      this.log(o, o.status, 'VITE', 'Course de livraison créée');
     } catch (e) {
       o.delivery = { ...o.delivery, error: e instanceof LetoError ? e.message : 'Création de la course impossible pour le moment' };
-      this.logger.warn(`Course LETO non créée pour ${o.number} : ${(e as Error).message}`);
+      this.logger.warn(`Course VITE non créée pour ${o.number} : ${(e as Error).message}`);
     }
     return this.repo.save(o);
   }
@@ -376,19 +376,19 @@ export class OrdersService {
     };
     if (stop?.status === 'DELIVERED' && o.status !== OrderStatus.DELIVERED) {
       o.status = OrderStatus.DELIVERED;
-      this.log(o, o.status, 'LETO', 'Colis remis au client');
+      this.log(o, o.status, 'VITE', 'Colis remis au client');
     } else if (stop?.status === 'FAILED' && o.status === OrderStatus.IN_DELIVERY) {
       o.status = OrderStatus.FAILED;
-      this.log(o, o.status, 'LETO', 'Livraison impossible (client absent ou refus)');
+      this.log(o, o.status, 'VITE', 'Livraison impossible (client absent ou refus)');
     } else if (d.status === 'CANCELLED' && o.status === OrderStatus.IN_DELIVERY) {
-      // Course annulée côté LETO : la commande redevient « payée », on peut relancer une course
+      // Course annulée côté VITE : la commande redevient « payée », on peut relancer une course
       o.status = OrderStatus.PAID;
-      o.delivery.error = 'Course annulée par LETO : relancez la livraison';
-      this.log(o, o.status, 'LETO', 'Course annulée');
+      o.delivery.error = 'Course annulée par VITE : relancez la livraison';
+      this.log(o, o.status, 'VITE', 'Course annulée');
     }
   }
 
-  /** Mise à jour depuis LETO à la consultation (si le dernier état date de plus de 20 s) */
+  /** Mise à jour depuis VITE à la consultation (si le dernier état date de plus de 20 s) */
   private async refreshDelivery(o: Order) {
     if (o.status !== OrderStatus.IN_DELIVERY || !o.delivery?.deliveryId || !this.leto.configured) return o;
     if (o.delivery.updatedAt && Date.now() - Date.parse(o.delivery.updatedAt) < REFRESH_EVERY_MS) return o;
@@ -400,7 +400,7 @@ export class OrdersService {
     }
   }
 
-  /** Webhook LETO (signature vérifiée par le contrôleur) */
+  /** Webhook VITE (signature vérifiée par le contrôleur) */
   async onWebhook(body: { id?: string; event?: string; delivery?: LetoDelivery }) {
     const d = body.delivery;
     if (!d?.id) return { ok: true };

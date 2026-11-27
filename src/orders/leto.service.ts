@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 
-/** Course LETO (format de l'API partenaire v1) */
+/** Course VITE (format de l'API partenaire v1) */
 export interface LetoDelivery {
   id: string;
   reference: string | null;
@@ -22,11 +22,11 @@ export interface LetoCreate {
   feePaidBy?: 'SENDER' | 'RECIPIENT';
 }
 
-/** Erreur LETO lisible (message déjà en français côté LETO) */
+/** Erreur VITE lisible (message déjà en français côté VITE) */
 export class LetoError extends Error {}
 
 /**
- * Client de l'API partenaire LETO : devis, création et suivi des courses, vérification des webhooks.
+ * Client de l'API partenaire VITE : devis, création et suivi des courses, vérification des webhooks.
  * Configuration : LETO_API_URL (ex. https://api.leto.performx.online), LETO_API_KEY, LETO_WEBHOOK_SECRET.
  */
 @Injectable()
@@ -38,7 +38,7 @@ export class LetoService {
   }
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
-    if (!this.configured) throw new LetoError('Livraison LETO non configurée');
+    if (!this.configured) throw new LetoError('Livraison VITE non configurée');
     let res: Response;
     try {
       res = await fetch(`${process.env.LETO_API_URL!.replace(/\/$/, '')}/partner/v1${path}`, {
@@ -52,15 +52,15 @@ export class LetoService {
         signal: AbortSignal.timeout(20_000),
       });
     } catch (e) {
-      this.logger.error(`LETO injoignable : ${(e as Error).message}`);
-      throw new LetoError('Service de livraison LETO injoignable pour le moment');
+      this.logger.error(`VITE injoignable : ${(e as Error).message}`);
+      throw new LetoError('Service de livraison VITE injoignable pour le moment');
     }
     const data = await res.json().catch(() => null);
     if (!res.ok) {
       const m = (data as { message?: string | string[] } | null)?.message;
       const msg = Array.isArray(m) ? m.join(', ') : m;
-      this.logger.warn(`LETO ${method} ${path} → ${res.status} ${msg ?? ''}`);
-      throw new LetoError(res.status === 403 ? 'Accès à LETO désactivé pour le moment' : msg || 'Demande refusée par LETO');
+      this.logger.warn(`VITE ${method} ${path} → ${res.status} ${msg ?? ''}`);
+      throw new LetoError(res.status === 403 ? 'Accès à VITE désactivé pour le moment' : msg || 'Demande refusée par VITE');
     }
     return data as T;
   }

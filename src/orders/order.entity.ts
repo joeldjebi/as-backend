@@ -3,7 +3,7 @@ import { Column, CreateDateColumn, Entity, Generated, Index, PrimaryGeneratedCol
 /**
  * Cycle d'une commande (une par boutique) :
  * AWAITING_PAYMENT → (le client déclare son paiement) PAYMENT_DECLARED → (le bénéficiaire confirme) PAID
- * → (course LETO créée) IN_DELIVERY → DELIVERED. Sinon CANCELLED ou FAILED (livraison impossible).
+ * → (course VITE créée) IN_DELIVERY → DELIVERED. Sinon CANCELLED ou FAILED (livraison impossible).
  */
 export enum OrderStatus {
   AWAITING_PAYMENT = 'AWAITING_PAYMENT',
@@ -50,7 +50,7 @@ export interface OrderPayment {
   rejectedNote?: string | null;
 }
 
-/** Course LETO liée (mise à jour par webhook ou à la consultation) */
+/** Course VITE liée (mise à jour par webhook ou à la consultation) */
 export interface OrderDelivery {
   deliveryId?: string | null;
   status?: string | null;
@@ -87,7 +87,7 @@ export class Order {
   @Column('int') goodsTotal: number;
   /** Payé à la commande (Mobile Money) */
   @Column('int') dueNow: number;
-  /** Encaissé par le livreur LETO à la remise */
+  /** Encaissé par le livreur VITE à la remise */
   @Column('int') dueOnDelivery: number;
   /** Estimation des frais de livraison (payés en espèces au livreur) */
   @Column({ type: 'int', nullable: true }) deliveryFeeEstimate: number | null;

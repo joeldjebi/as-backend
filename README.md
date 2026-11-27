@@ -1,6 +1,6 @@
 # Adjamé-Smart — API
 
-Marketplace des boutiques et grossistes d'Adjamé, livrée par LETO. NestJS + PostgreSQL.
+Marketplace des boutiques et grossistes d'Adjamé, livrée par VITE. NestJS + PostgreSQL.
 
 ## Développement
 
