@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { SettingsService } from '../settings/settings.service';
 
@@ -39,6 +39,31 @@ export class LetoService {
 
   get configured() {
     return !!(this.settings.get('LETO_API_URL') && this.settings.get('LETO_API_KEY'));
+  }
+
+  /** Suivi public d'une course (sans clé) : statut, livreur, position, itinéraire, temps restant */
+  async track(token: string): Promise<unknown> {
+    const base = this.settings.get('LETO_API_URL').replace(/\/$/, '');
+    if (!base) throw new ServiceUnavailableException('Suivi indisponible pour le moment');
+    let res: Response;
+    try {
+      res = await fetch(`${base}/track/${token}`, { signal: AbortSignal.timeout(15_000) });
+    } catch {
+      throw new ServiceUnavailableException('Suivi indisponible pour le moment');
+    }
+    if (!res.ok) throw new ServiceUnavailableException('Suivi indisponible pour le moment');
+    return res.json();
+  }
+
+  /** Recherche d'adresse (quartiers et lieux d'Abidjan) */
+  geoSearch(q: string, near?: { lat: number; lng: number }) {
+    const qs = new URLSearchParams({ q, ...(near ? { lat: String(near.lat), lng: String(near.lng) } : {}) });
+    return this.call<{ label: string; sublabel: string; lat: number; lng: number }[]>('GET', `/geo/search?${qs}`);
+  }
+
+  /** Adresse et commune d'un point */
+  geoReverse(lat: number, lng: number) {
+    return this.call<{ label: string; sublabel: string; commune: string }>('GET', `/geo/reverse?lat=${lat}&lng=${lng}`);
   }
 
   /** Vérification de la clé : partenaire, actif, adresse des notifications */

@@ -11,7 +11,7 @@ import { Category } from './categories/category.entity';
 import { AuthGuard } from './common/auth.guard';
 import { Order } from './orders/order.entity';
 import { LetoService } from './orders/leto.service';
-import { LetoWebhookController, OrdersController } from './orders/orders.controller';
+import { GeoController, LetoWebhookController, OrdersController } from './orders/orders.controller';
 import { OrdersService } from './orders/orders.service';
 import { Product } from './products/product.entity';
 import { SettingsController } from './settings/settings.controller';
@@ -52,7 +52,7 @@ const entities = [User, Category, Shop, Product, Order, Setting];
     TypeOrmModule.forFeature(entities),
     JwtModule.register({ global: true, secret: process.env.JWT_SECRET || 'adjame-dev', signOptions: { expiresIn: '60d' } }),
   ],
-  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController, OrdersController, LetoWebhookController, SettingsController],
+  controllers: [AuthController, CategoriesController, ShopsController, AdminController, UploadsController, ProductsController, OrdersController, LetoWebhookController, GeoController, SettingsController],
   providers: [AuthService, CategoriesService, ShopsService, ProductsService, OrdersService, LetoService, SettingsService, StorageService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

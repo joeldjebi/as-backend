@@ -71,6 +71,12 @@ export class OrdersController {
     return this.service.mine(u.sub);
   }
 
+  @Get('mine/:id/track')
+  @Roles(Role.CUSTOMER)
+  track(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.trackForCustomer(u.sub, id);
+  }
+
   @Post('mine/:id/payment')
   @HttpCode(200)
   @Roles(Role.CUSTOMER)
@@ -160,6 +166,28 @@ export class OrdersController {
   @Roles(Role.CUSTOMER)
   one(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.oneForCustomer(u.sub, id);
+  }
+}
+
+/** Adresse de livraison : recherche de quartier et vérification du point (service d'adresses de VITE) */
+@Controller('geo')
+export class GeoController {
+  constructor(private leto: LetoService) {}
+
+  @Get('search')
+  @Roles(Role.CUSTOMER)
+  async search(@Query('q') q = '', @Query('lat') lat?: string, @Query('lng') lng?: string) {
+    const text = String(q).trim().slice(0, 120);
+    if (text.length < 2) return [];
+    const near = lat && lng && Number.isFinite(+lat) && Number.isFinite(+lng) ? { lat: +lat, lng: +lng } : undefined;
+    return this.leto.geoSearch(text, near).catch(() => []);
+  }
+
+  @Get('reverse')
+  @Roles(Role.CUSTOMER)
+  reverse(@Query('lat') lat: string, @Query('lng') lng: string) {
+    if (!Number.isFinite(+lat) || !Number.isFinite(+lng) || !lat || !lng) return null;
+    return this.leto.geoReverse(+lat, +lng).catch(() => null);
   }
 }
 

@@ -29,6 +29,11 @@ const DELIVERY_LABEL: Record<string, string> = {
 
 const REFRESH_EVERY_MS = 20_000;
 
+/** Jeton du lien de suivi VITE (32 caractères hexadécimaux) */
+const trackingToken = (url?: string | null) => url?.match(/[0-9a-f]{32}/)?.[0] ?? null;
+/** Page publique de suivi de VITE */
+const TRACKING_PAGE = () => process.env.VITE_TRACKING_PAGE || 'https://vite.ci/pro/#/suivi/';
+
 @Injectable()
 export class OrdersService {
   private logger = new Logger(OrdersService.name);
@@ -46,8 +51,11 @@ export class OrdersService {
   // ---------- Vues ----------
 
   view(o: Order) {
+    const token = trackingToken(o.delivery?.trackingUrl);
     return {
       ...o,
+      // Lien vers la page de suivi de VITE (espace web), quel que soit le format renvoyé par VITE
+      delivery: o.delivery ? { ...o.delivery, trackingUrl: token ? `${TRACKING_PAGE()}${token}` : null, trackable: !!token } : o.delivery,
       number: o.number,
       deliveryLabel: o.delivery?.status ? (DELIVERY_LABEL[o.delivery.status] ?? o.delivery.status) : null,
     };
@@ -180,6 +188,15 @@ export class OrdersService {
   async mine(userId: string) {
     const rows = await this.repo.find({ where: { customerId: userId }, order: { createdAt: 'DESC' }, take: 100 });
     return rows.map((o) => this.view(o));
+  }
+
+  /** Client : suivi en direct de la course (position du livreur, itinéraire, temps restant) */
+  async trackForCustomer(userId: string, id: string) {
+    const o = await this.repo.findOneBy({ id });
+    if (!o || o.customerId !== userId) throw new NotFoundException('Commande introuvable');
+    const token = trackingToken(o.delivery?.trackingUrl);
+    if (!token) throw new NotFoundException('Suivi disponible dès qu’un livreur est demandé');
+    return this.leto.track(token);
   }
 
   async oneForCustomer(userId: string, id: string) {
