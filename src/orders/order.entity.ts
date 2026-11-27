@@ -92,7 +92,7 @@ export class Order {
   /** Estimation des frais de livraison (payés en espèces au livreur) */
   @Column({ type: 'int', nullable: true }) deliveryFeeEstimate: number | null;
   /** Type de livraison choisi par le client : engin (MOTO, CAR, CARGO) et délai (EXPRESS, STANDARD, SCHEDULED) */
-  @Column({ type: 'varchar', length: 10, default: 'MOTO' }) vehicleType: 'MOTO' | 'CAR' | 'CARGO';
+  @Column({ type: 'varchar', length: 12, default: 'MOTO' }) vehicleType: string;
   @Column({ type: 'varchar', length: 10, default: 'STANDARD' }) speed: 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
   @Column({ type: 'jsonb' }) address: OrderAddress;
   @Column({ type: 'varchar', length: 100 }) recipientName: string;

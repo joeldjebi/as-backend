@@ -115,6 +115,7 @@ export class OrdersService {
       dueNow: lines.reduce((t, l) => t + l.dueNow, 0),
       dueOnDelivery: lines.reduce((t, l) => t + l.dueOnDelivery, 0),
       deliveryOptions,
+      vehicles: this.leto.vehicles,
       vehicleType: v,
       speed: sp,
       deliveryFeeEstimate: lines.every((l) => l.deliveryFeeEstimate != null) ? lines.reduce((t, l) => t + (l.deliveryFeeEstimate ?? 0), 0) : null,

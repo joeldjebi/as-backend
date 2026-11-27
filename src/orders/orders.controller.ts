@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Q
 import type { RawBodyRequest } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsIn, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsIn, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested, Matches } from 'class-validator';
 import type { Request } from 'express';
 import { Repository } from 'typeorm';
 import { AuthUser, CurrentUser, Public, Roles, Staff } from '../common/decorators';
@@ -31,7 +31,7 @@ class CheckoutDto {
   @IsOptional() @IsString() @MaxLength(100) recipientName?: string;
   @IsPhone({ optional: true, message: `Téléphone du destinataire : ${PHONE_MESSAGE}` }) recipientPhone?: string;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
-  @IsOptional() @IsIn(['MOTO', 'CAR', 'CARGO'], { message: 'Engin inconnu' }) vehicleType?: 'MOTO' | 'CAR' | 'CARGO';
+  @IsOptional() @Matches(/^[A-Z][A-Z0-9_]{1,9}$/, { message: 'Engin inconnu' }) vehicleType?: string;
   @IsOptional() @IsIn(['EXPRESS', 'STANDARD', 'SCHEDULED'], { message: 'Délai inconnu' }) speed?: 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
 }
 class PriceDto {

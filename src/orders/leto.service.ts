@@ -15,7 +15,7 @@ export interface LetoDelivery {
 
 export interface LetoCreate {
   reference: string;
-  vehicleType?: 'MOTO' | 'CAR' | 'CARGO';
+  vehicleType?: string;
   speed?: 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
   pickup: { lat: number; lng: number; address: string; phone: string; contactName?: string; details?: string };
   stops: { lat: number; lng: number; address: string; recipientName: string; recipientPhone: string; codAmount?: number; packageDescription?: string; details?: string }[];
@@ -26,7 +26,8 @@ export interface LetoCreate {
 /** Erreur VITE lisible (message déjà en français côté VITE) */
 export class LetoError extends Error {}
 
-export type VehicleType = 'MOTO' | 'CAR' | 'CARGO';
+/** Engin : MOTO, CAR, CARGO ou un engin ajouté dans VITE (VELO, TRICYCLE…) */
+export type VehicleType = string;
 export type DeliverySpeed = 'EXPRESS' | 'STANDARD' | 'SCHEDULED';
 /** Proposition d'un livreur sur une course en attente (2 min pour répondre) */
 export interface LetoOffer {
@@ -42,6 +43,8 @@ export interface LetoOffer {
   etaMin: number | null;
 }
 export interface DeliveryOption { vehicleType: VehicleType; speed: DeliverySpeed; price: number }
+/** Engin proposé par VITE (nom et pictogramme pour l'affichage) */
+export interface VehicleInfo { code: string; name: string; icon: string; description: string }
 
 /**
  * Client de l'API partenaire VITE : devis, création et suivi des courses, vérification des webhooks.
@@ -131,10 +134,14 @@ export class LetoService {
   }
 
   /** Prix de chaque type de livraison proposé par VITE (engin × délai) ; null si indisponible */
+  /** Derniers engins connus de VITE (noms et pictogrammes) */
+  vehicles: VehicleInfo[] = [];
+
   async quoteOptions(pickup: { lat: number; lng: number }, stop: { lat: number; lng: number; codAmount?: number }): Promise<DeliveryOption[] | null> {
     if (!this.configured) return null;
     try {
-      const q = await this.call<{ prices: DeliveryOption[] }>('POST', '/quotes', { pickup, stops: [stop] });
+      const q = await this.call<{ prices: DeliveryOption[]; vehicles?: VehicleInfo[] }>('POST', '/quotes', { pickup, stops: [stop] });
+      if (q.vehicles?.length) this.vehicles = q.vehicles;
       return q.prices.length ? q.prices.map((p) => ({ vehicleType: p.vehicleType, speed: p.speed, price: p.price })) : null;
     } catch {
       return null;
