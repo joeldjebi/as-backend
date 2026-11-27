@@ -5,6 +5,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { Product, ProductStatus } from '../products/product.entity';
 import { Shop, ShopStatus } from '../shops/shop.entity';
 import { User } from '../users/user.entity';
+import { SettingsService } from '../settings/settings.service';
 import { LetoDelivery, LetoError, LetoService } from './leto.service';
 import { Order, OrderAddress, OrderItem, OrderStatus } from './order.entity';
 
@@ -38,6 +39,7 @@ export class OrdersService {
     @InjectRepository(Shop) private shops: Repository<Shop>,
     @InjectRepository(User) private users: Repository<User>,
     private leto: LetoService,
+    private settings: SettingsService,
     private db: DataSource,
   ) {}
 
@@ -58,7 +60,7 @@ export class OrdersService {
   /** Bénéficiaire du paiement : la boutique (alias PI-SPI) ou Adjamé-Smart */
   private payee(shop: Shop) {
     if (shop.payoutMode === 'DIRECT' && shop.pispiAlias) return { mode: 'DIRECT' as const, alias: shop.pispiAlias, payee: shop.name };
-    return { mode: 'PLATFORM' as const, alias: process.env.AS_PISPI_ALIAS || null, payee: process.env.AS_PISPI_NAME || 'Adjamé-Smart' };
+    return { mode: 'PLATFORM' as const, alias: this.settings.get('AS_PISPI_ALIAS') || null, payee: this.settings.get('AS_PISPI_NAME') || 'Adjamé-Smart' };
   }
 
   // ---------- Client ----------

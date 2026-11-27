@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { SettingsService } from '../settings/settings.service';
 
 /** Course VITE (format de l'API partenaire v1) */
 export interface LetoDelivery {
@@ -33,18 +34,26 @@ export class LetoError extends Error {}
 export class LetoService {
   private logger = new Logger(LetoService.name);
 
+  /** Adresse, clé et secret : réglages du back-office (Super Admin), sinon .env */
+  constructor(private settings: SettingsService) {}
+
   get configured() {
-    return !!(process.env.LETO_API_URL && process.env.LETO_API_KEY);
+    return !!(this.settings.get('LETO_API_URL') && this.settings.get('LETO_API_KEY'));
+  }
+
+  /** Vérification de la clé : partenaire, actif, adresse des notifications */
+  me() {
+    return this.call<{ id: string; name: string; active: boolean; webhookUrl: string | null }>('GET', '/me');
   }
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown, idempotencyKey?: string): Promise<T> {
     if (!this.configured) throw new LetoError('Livraison VITE non configurée');
     let res: Response;
     try {
-      res = await fetch(`${process.env.LETO_API_URL!.replace(/\/$/, '')}/partner/v1${path}`, {
+      res = await fetch(`${this.settings.get('LETO_API_URL').replace(/\/$/, '')}/partner/v1${path}`, {
         method,
         headers: {
-          Authorization: `Bearer ${process.env.LETO_API_KEY}`,
+          Authorization: `Bearer ${this.settings.get('LETO_API_KEY')}`,
           'Content-Type': 'application/json',
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         },
@@ -86,7 +95,7 @@ export class LetoService {
 
   /** Signature « X-Leto-Signature: t=…,v1=… » : HMAC-SHA256(secret, "t.corps"), moins de 5 minutes */
   verify(header: string | undefined, raw: Buffer | undefined) {
-    const secret = process.env.LETO_WEBHOOK_SECRET;
+    const secret = this.settings.get('LETO_WEBHOOK_SECRET');
     if (!secret || !header || !raw) return false;
     const parts = Object.fromEntries(header.split(',').map((x) => x.trim().split('=') as [string, string]));
     const t = Number(parts.t);
