@@ -27,7 +27,7 @@ export class LetoError extends Error {}
 
 /**
  * Client de l'API partenaire VITE : devis, création et suivi des courses, vérification des webhooks.
- * Configuration : LETO_API_URL (ex. https://api.leto.performx.online), LETO_API_KEY, LETO_WEBHOOK_SECRET.
+ * Configuration : LETO_API_URL (ex. https://api.vite.ci), LETO_API_KEY, LETO_WEBHOOK_SECRET.
  */
 @Injectable()
 export class LetoService {
