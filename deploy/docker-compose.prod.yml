@@ -1,0 +1,18 @@
+# Base PostgreSQL d'Adjamé-Smart en production — isolée de celle de VITE, accessible uniquement depuis le serveur (127.0.0.1:5441)
+# Lancement : docker compose --env-file deploy/.db.env -f deploy/docker-compose.prod.yml up -d (fichier créé par deploy/install.sh)
+name: as-prod
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-adjame}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Renseignez DB_PASSWORD dans .env}
+      POSTGRES_DB: ${DB_NAME:-adjame_smart}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5441}:5432"
+    volumes:
+      - as_prod_db:/var/lib/postgresql/data
+
+volumes:
+  as_prod_db:
