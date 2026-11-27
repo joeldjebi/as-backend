@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested, ArrayMinSize,
 } from 'class-validator';
@@ -46,6 +46,16 @@ class NoteDto {
 class FeaturedDto {
   @IsBoolean() featured: boolean;
 }
+const num = ({ value }: { value: unknown }) => (value === undefined || value === '' ? undefined : Number(value));
+class ShopListDto {
+  @IsOptional() @IsString() @MaxLength(100) q?: string;
+  @IsOptional() @IsString() @MaxLength(60) market?: string;
+  @IsOptional() @IsIn(['BOUTIQUE', 'GROSSISTE']) type?: 'BOUTIQUE' | 'GROSSISTE';
+  @IsOptional() @IsUUID() categoryId?: string;
+  @IsOptional() @IsIn(['name', 'new', 'popular']) sort?: 'name' | 'new' | 'popular';
+  @IsOptional() @Transform(num) @IsInt() @Min(1) @Max(500) page?: number;
+  @IsOptional() @Transform(num) @IsInt() @Min(1) @Max(48) limit?: number;
+}
 class StatusQuery {
   @IsOptional() @IsEnum(ShopStatus) status?: ShopStatus;
 }
@@ -61,14 +71,14 @@ export class ShopsController {
   // ----- Public -----
   @Public()
   @Get('meta')
-  meta() {
-    return { markets: MARKETS };
+  async meta() {
+    return { markets: MARKETS, marketCounts: await this.service.marketCounts() };
   }
 
   @Public()
   @Get()
-  list(@Query('categoryId') categoryId?: string) {
-    return this.service.publicList(categoryId);
+  list(@Query() q: ShopListDto) {
+    return this.service.publicList(q);
   }
 
   // ----- Vendeur -----

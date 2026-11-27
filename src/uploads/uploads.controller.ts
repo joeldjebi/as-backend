@@ -3,9 +3,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import type { Response } from 'express';
 import { existsSync } from 'fs';
+import { mkdir, readFile } from 'fs/promises';
 import { memoryStorage } from 'multer';
+import { dirname, join } from 'path';
+import sharp from 'sharp';
 import { Public } from '../common/decorators';
-import { StorageService } from '../storage/storage.service';
+import { LOCAL_UPLOAD_DIR, StorageService } from '../storage/storage.service';
+
+const THUMB_WIDTHS = [240, 480, 800, 1200];
 
 const EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic' };
 const NAME = /^[0-9a-f-]{36}\.(jpg|png|webp|heic)$/;
@@ -32,7 +37,34 @@ const sign = (name: string, exp: number) => createHmac('sha256', process.env.JWT
  */
 @Controller()
 export class UploadsController {
+  private pending = new Map<string, Promise<string | null>>();
   constructor(private storage: StorageService) {}
+
+  /** Miniature (créée au premier appel, une seule fois même si plusieurs demandes arrivent ensemble) */
+  private thumbnail(name: string, width: number, original: string): Promise<string | null> {
+    const out = join(process.cwd(), LOCAL_UPLOAD_DIR, '_thumbs', `${width}-${name.replace(/\.\w+$/, '')}.webp`);
+    if (existsSync(out)) return Promise.resolve(out);
+    const key = out;
+    if (!this.pending.has(key)) {
+      this.pending.set(
+        key,
+        (async () => {
+          try {
+            const src = existsSync(original) ? await readFile(original) : await this.storage.read(name);
+            if (!src) return null;
+            await mkdir(dirname(out), { recursive: true });
+            await sharp(src).rotate().resize({ width, withoutEnlargement: true }).webp({ quality: 78 }).toFile(out);
+            return out;
+          } catch {
+            return null; // format non pris en charge (ex. HEIC) : on sert l'original
+          } finally {
+            this.pending.delete(key);
+          }
+        })(),
+      );
+    }
+    return this.pending.get(key)!;
+  }
 
   @Post('uploads')
   @UseInterceptors(upload())
@@ -52,12 +84,22 @@ export class UploadsController {
     return { url: `/identity/${name}` };
   }
 
+  /**
+   * Photo publique. Avec ?w=240|480|800|1200 : miniature WebP à cette largeur, fabriquée une fois puis gardée
+   * sur le serveur (les listes de l'app chargent ainsi des images 10 à 20 fois plus légères).
+   * Les noms ne changent jamais (identifiants aléatoires) : mise en cache longue par le téléphone.
+   */
   @Public()
   @Get('uploads/:name')
-  async read(@Param('name') name: string, @Res() res: Response) {
+  async read(@Param('name') name: string, @Query('w') w: string | undefined, @Res() res: Response) {
     if (!NAME.test(name)) throw new NotFoundException();
     const path = this.storage.localPath(name);
-    if (existsSync(path)) return res.sendFile(path);
+    const width = THUMB_WIDTHS.includes(Number(w)) ? Number(w) : null;
+    if (width) {
+      const thumb = await this.thumbnail(name, width, path);
+      if (thumb) return res.sendFile(thumb, { maxAge: '365d', immutable: true, headers: { 'Content-Type': 'image/webp' } });
+    }
+    if (existsSync(path)) return res.sendFile(path, { maxAge: '365d', immutable: true });
     if (!this.storage.usesWasabi) throw new NotFoundException();
     res.setHeader('Cache-Control', 'private, max-age=3000');
     return res.redirect(302, await this.storage.signedUrl(name, 'photos', 3600));

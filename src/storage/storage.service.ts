@@ -92,6 +92,17 @@ export class StorageService {
     );
   }
 
+  /** Contenu d'un fichier (Wasabi), pour fabriquer les miniatures */
+  async read(name: string, folder: StorageFolder = 'photos'): Promise<Buffer | null> {
+    if (!this.s3) return null;
+    try {
+      const out = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket(folder), Key: this.key(folder, name) }), { abortSignal: AbortSignal.timeout(20_000) });
+      return out.Body ? Buffer.from(await out.Body.transformToByteArray()) : null;
+    } catch {
+      return null;
+    }
+  }
+
   localPath(name: string, folder: StorageFolder = 'photos') {
     return folder === 'identity' ? join(process.cwd(), LOCAL_UPLOAD_DIR, 'identity', name) : join(process.cwd(), LOCAL_UPLOAD_DIR, name);
   }

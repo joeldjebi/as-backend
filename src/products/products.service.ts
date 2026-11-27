@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
@@ -7,8 +7,10 @@ import { Shop, ShopStatus } from '../shops/shop.entity';
 import { ResellerStatus, User } from '../users/user.entity';
 import { Product, ProductStatus } from './product.entity';
 
-/** Texte sans accents, en minuscules (recherche) */
-export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+import { fold } from '../common/text';
+import { MARKETS } from '../shops/markets';
+
+export { fold };
 
 export interface ProductInput {
   shopId?: string; categoryId?: string; name?: string; description?: string; photos?: string[];
@@ -19,17 +21,38 @@ export interface ProductInput {
 export interface SearchQuery {
   q?: string; categoryId?: string; shopId?: string; wholesale?: boolean; minPrice?: number; maxPrice?: number;
   sort?: 'new' | 'price_asc' | 'price_desc' | 'popular'; page?: number;
+  market?: string; type?: 'BOUTIQUE' | 'GROSSISTE'; inStock?: boolean; limit?: number;
 }
 
 const PAGE = 24;
+const HOME_TTL = 60_000;
 
 @Injectable()
-export class ProductsService {
+export class ProductsService implements OnModuleInit {
+  private logger = new Logger(ProductsService.name);
+  private homeCache = new Map<string, { at: number; data: unknown }>();
+
   constructor(
     @InjectRepository(Product) private repo: Repository<Product>,
     @InjectRepository(Shop) private shops: Repository<Shop>,
     @InjectRepository(Category) private categories: Repository<Category>,
   ) {}
+
+  /** Index de recherche rapide (trigrammes), utile dès quelques milliers de produits ; texte de recherche des boutiques */
+  async onModuleInit() {
+    try {
+      await this.repo.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+      await this.repo.query('CREATE INDEX IF NOT EXISTS products_search_trgm ON products USING gin ("searchText" gin_trgm_ops)');
+      await this.repo.query('CREATE INDEX IF NOT EXISTS shops_search_trgm ON shops USING gin ("searchText" gin_trgm_ops)');
+    } catch (e) {
+      this.logger.warn(`Index de recherche non créé (extension pg_trgm indisponible) : ${(e as Error).message}`);
+    }
+    const missing = await this.shops.find({ where: { searchText: '' } });
+    for (const s of missing) {
+      s.computeSearchText();
+      await this.shops.update(s.id, { searchText: s.searchText });
+    }
+  }
 
   // ---------- Vues ----------
 
@@ -189,14 +212,18 @@ export class ProductsService {
     if (q.categoryId) qb.andWhere('p."categoryId" IN (:...cats)', { cats: await this.categoryFamily(q.categoryId) });
     if (q.shopId) qb.andWhere('p."shopId" = :shop', { shop: q.shopId });
     if (q.wholesale) qb.andWhere('p."wholesalePrice" IS NOT NULL');
+    if (q.market) qb.andWhere('s.market = :market', { market: q.market });
+    if (q.type) qb.andWhere('s.type = :stype', { stype: q.type });
+    if (q.inStock) qb.andWhere('(jsonb_array_length(p.variants) > 0 OR p.stock IS NULL OR p.stock > 0)');
     if (q.minPrice != null) qb.andWhere('p.price >= :min', { min: q.minPrice });
     if (q.maxPrice != null) qb.andWhere('p.price <= :max', { max: q.maxPrice });
     const order: Record<string, [string, 'ASC' | 'DESC']> = { new: ['p.createdAt', 'DESC'], price_asc: ['p.price', 'ASC'], price_desc: ['p.price', 'DESC'], popular: ['p.views', 'DESC'] };
     const [col, dir] = order[q.sort ?? 'new'] ?? order.new;
     const page = Math.max(1, q.page ?? 1);
-    const [rows, total] = await qb.orderBy(col, dir).addOrderBy('p.id', 'ASC').skip((page - 1) * PAGE).take(PAGE).getManyAndCount();
+    const size = Math.min(48, Math.max(1, q.limit ?? PAGE));
+    const [rows, total] = await qb.orderBy(col, dir).addOrderBy('p.id', 'ASC').skip((page - 1) * size).take(size).getManyAndCount();
     const shops = await this.shops.findBy({ id: In([...new Set(rows.map((r) => r.shopId))].concat('00000000-0000-0000-0000-000000000000')) });
-    return { total, page, pages: Math.ceil(total / PAGE), items: rows.map((p) => this.publicView(p, shops.find((s) => s.id === p.shopId), viewer)) };
+    return { total, page, pages: Math.ceil(total / size), items: rows.map((p) => this.publicView(p, shops.find((s) => s.id === p.shopId), viewer)) };
   }
 
   async one(id: string, viewer?: User) {
@@ -207,15 +234,86 @@ export class ProductsService {
     return this.publicView(p, shop ?? undefined, viewer);
   }
 
-  /** Accueil de l'app : nouveautés, boutiques mises en avant, populaires */
+  /** Accueil de l'app : rayons, marchés, boutiques, collections (mis en cache une minute) */
   async home(viewer?: User) {
-    const [fresh, popular] = await Promise.all([this.search({ sort: 'new' }, viewer), this.search({ sort: 'popular' }, viewer)]);
-    const featured = await this.shops.find({ where: { status: ShopStatus.APPROVED, featured: true }, order: { name: 'ASC' }, take: 12 });
-    return {
-      newProducts: fresh.items.slice(0, 12),
-      popularProducts: popular.items.slice(0, 12),
-      featuredShops: featured.map((s) => ({ id: s.id, name: s.name, slug: s.slug, type: s.type, market: s.market, logoUrl: s.logoUrl, storefrontUrl: s.storefrontUrl })),
+    const key = viewer?.resellerStatus === ResellerStatus.APPROVED ? 'reseller' : 'public';
+    const hit = this.homeCache.get(key);
+    if (hit && Date.now() - hit.at < HOME_TTL) return hit.data;
+    const L = 10;
+    const [fresh, popular, cheap, wholesale] = await Promise.all([
+      this.search({ sort: 'new', limit: L }, viewer),
+      this.search({ sort: 'popular', limit: L }, viewer),
+      this.search({ sort: 'popular', maxPrice: 5000, limit: L }, viewer),
+      this.search({ sort: 'popular', wholesale: true, limit: L }, viewer),
+    ]);
+    const [featured, recent] = await Promise.all([
+      this.shops.find({ where: { status: ShopStatus.APPROVED, featured: true }, order: { name: 'ASC' }, take: 12 }),
+      this.shops.find({ where: { status: ShopStatus.APPROVED }, order: { reviewedAt: 'DESC' }, take: 10 }),
+    ]);
+    const counts = await this.productCounts([...featured, ...recent].map((s) => s.id));
+    const marketRows: { market: string; n: number }[] = await this.shops.query(
+      `SELECT market, count(*)::int AS n FROM shops WHERE status = 'APPROVED' AND market IS NOT NULL GROUP BY market`,
+    );
+    const catRows: { id: string; n: number }[] = await this.repo.query(
+      `SELECT COALESCE(c."parentId", c.id) AS id, count(*)::int AS n FROM products p
+         JOIN shops s ON s.id = p."shopId" JOIN categories c ON c.id = p."categoryId"
+        WHERE p.status = 'ACTIVE' AND s.status = 'APPROVED' GROUP BY 1`,
+    );
+    const rank = (m: string) => (MARKETS.indexOf(m) < 0 ? 99 : MARKETS.indexOf(m));
+    const data = {
+      newProducts: fresh.items,
+      popularProducts: popular.items,
+      cheapProducts: cheap.items,
+      wholesaleProducts: wholesale.items,
+      featuredShops: featured.map((s) => this.shopCard(s, counts[s.id])),
+      newShops: recent.map((s) => this.shopCard(s, counts[s.id])),
+      markets: marketRows.sort((a, b) => rank(a.market) - rank(b.market)).map((m) => ({ name: m.market, shops: m.n })),
+      categoryCounts: Object.fromEntries(catRows.map((r) => [r.id, r.n])),
+      totals: { products: fresh.total, shops: marketRows.reduce((t, m) => t + m.n, 0) },
     };
+    this.homeCache.set(key, { at: Date.now(), data });
+    return data;
+  }
+
+  /** Carte de boutique (listes) */
+  shopCard(s: Shop, productCount?: number) {
+    return { id: s.id, name: s.name, slug: s.slug, type: s.type, market: s.market, logoUrl: s.logoUrl, storefrontUrl: s.storefrontUrl, isOpen: s.isOpen, productCount: productCount ?? 0 };
+  }
+
+  /** Nombre de produits visibles par boutique */
+  async productCounts(shopIds: string[]): Promise<Record<string, number>> {
+    if (!shopIds.length) return {};
+    const rows: { id: string; n: number }[] = await this.repo.query(
+      `SELECT "shopId" AS id, count(*)::int AS n FROM products WHERE status = 'ACTIVE' AND "shopId" = ANY($1::uuid[]) GROUP BY 1`,
+      [[...new Set(shopIds)]],
+    );
+    return Object.fromEntries(rows.map((r) => [r.id, r.n]));
+  }
+
+  /** Suggestions pendant la frappe : rayons, boutiques, produits */
+  async suggest(q: string) {
+    const words = fold(q).split(/\s+/).filter((w) => w.length > 1).slice(0, 5);
+    if (!words.length) return { categories: [], shops: [], products: [] };
+    const like = (col: string) => words.map((_, i) => `${col} LIKE $${i + 1}`).join(' AND ');
+    const params = words.map((w) => `%${w}%`);
+    const [cats, shops, products] = await Promise.all([
+      this.categories.find({ where: { active: true } }),
+      this.shops.query(
+        `SELECT id, slug, name, market, "logoUrl" FROM shops WHERE status = 'APPROVED' AND ${like('"searchText"')} ORDER BY featured DESC, name LIMIT 4`,
+        params,
+      ),
+      this.repo.query(
+        `SELECT p.id, p.name, p.price, p.photos[1] AS photo FROM products p JOIN shops s ON s.id = p."shopId"
+          WHERE p.status = 'ACTIVE' AND s.status = 'APPROVED' AND ${like('p."searchText"')} ORDER BY p.views DESC, p."createdAt" DESC LIMIT 6`,
+        params,
+      ),
+    ]);
+    const parent = (c: Category) => cats.find((x) => x.id === c.parentId);
+    const categories = cats
+      .filter((c) => words.every((w) => fold(c.name).includes(w)))
+      .slice(0, 4)
+      .map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? parent(c)?.icon ?? null, parentName: parent(c)?.name ?? null }));
+    return { categories, shops, products };
   }
 
   async report(id: string, userId: string, reason: string) {

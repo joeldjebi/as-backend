@@ -5,13 +5,17 @@ import { slugify } from '../categories/categories.controller';
 import { Category } from '../categories/category.entity';
 import { identityLink } from '../uploads/uploads.controller';
 import { User } from '../users/user.entity';
+import { fold } from '../common/text';
+import { Product } from '../products/product.entity';
 import { Shop, ShopEvent, ShopStatus } from './shop.entity';
 
-/** Zones et marchés d'Adjamé proposés à l'inscription (le vendeur peut aussi écrire le sien) */
-export const MARKETS = [
-  'Forum des marchés', 'Marché Gouro', 'Black Market (Roxy)', 'Marché de Bracodi', 'Marché Liberté',
-  'Adjamé Mosquée', 'Gare routière (Adjamé Nord)', 'Williamsville', '220 Logements', 'Autre emplacement',
-];
+export interface ShopListQuery {
+  q?: string; market?: string; type?: 'BOUTIQUE' | 'GROSSISTE'; categoryId?: string; sort?: 'name' | 'new' | 'popular'; page?: number; limit?: number;
+}
+
+import { MARKETS } from './markets';
+
+export { MARKETS };
 
 /** Rectangle autour de la commune d'Adjamé (avec une petite marge) */
 const ADJAME = { latMin: 5.335, latMax: 5.392, lngMin: -4.048, lngMax: -4.0 };
@@ -38,6 +42,7 @@ export class ShopsService {
     @InjectRepository(Shop) private repo: Repository<Shop>,
     @InjectRepository(Category) private categories: Repository<Category>,
     @InjectRepository(User) private users: Repository<User>,
+    @InjectRepository(Product) private products: Repository<Product>,
   ) {}
 
   private async uniqueSlug(base: string, except?: string) {
@@ -202,15 +207,57 @@ export class ShopsService {
 
   // ---------- Public ----------
 
-  async publicList(categoryId?: string) {
-    const qb = this.repo.createQueryBuilder('s').where('s.status = :st', { st: ShopStatus.APPROVED }).orderBy('s.name', 'ASC').limit(200);
-    if (categoryId) qb.andWhere(':c = ANY(s."categoryIds")', { c: categoryId });
-    return (await qb.getMany()).map((s) => this.publicView(s));
+  /** Annuaire des boutiques : recherche, marché, rayon, type, tri ; par pages */
+  async publicList(q: ShopListQuery) {
+    const qb = this.repo.createQueryBuilder('s').where('s.status = :st', { st: ShopStatus.APPROVED });
+    if (q.q?.trim()) {
+      fold(q.q).split(/\s+/).filter((w) => w.length > 1).slice(0, 5).forEach((w, i) => qb.andWhere(`s."searchText" LIKE :w${i}`, { [`w${i}`]: `%${w}%` }));
+    }
+    if (q.market) qb.andWhere('s.market = :market', { market: q.market });
+    if (q.type) qb.andWhere('s.type = :type', { type: q.type });
+    if (q.categoryId) {
+      const family = [q.categoryId, ...(await this.categories.findBy({ parentId: q.categoryId })).map((c) => c.id)];
+      qb.andWhere('s."categoryIds" && :fam::uuid[]', { fam: family });
+    }
+    const count = `(SELECT count(*) FROM products p WHERE p."shopId" = s.id AND p.status = 'ACTIVE')`;
+    if (q.sort === 'popular') qb.addSelect(count, 'pc').orderBy('pc', 'DESC');
+    else if (q.sort === 'new') qb.orderBy('s.reviewedAt', 'DESC', 'NULLS LAST');
+    else qb.orderBy('s.featured', 'DESC').addOrderBy('s.name', 'ASC');
+    qb.addOrderBy('s.id', 'ASC');
+    const page = Math.max(1, q.page ?? 1);
+    const size = Math.min(48, Math.max(1, q.limit ?? 24));
+    const [rows, total] = await qb.skip((page - 1) * size).take(size).getManyAndCount();
+    const counts = await this.productCounts(rows.map((s) => s.id));
+    return {
+      total, page, pages: Math.ceil(total / size),
+      items: rows.map((s) => ({ id: s.id, name: s.name, slug: s.slug, type: s.type, market: s.market, location: s.location, logoUrl: s.logoUrl, storefrontUrl: s.storefrontUrl, isOpen: s.isOpen, featured: s.featured, productCount: counts[s.id] ?? 0 })),
+    };
   }
 
+  /** Marchés avec leur nombre de boutiques en ligne */
+  async marketCounts() {
+    const rows: { market: string; n: number }[] = await this.repo.query(`SELECT market, count(*)::int AS n FROM shops WHERE status = 'APPROVED' AND market IS NOT NULL GROUP BY market`);
+    return Object.fromEntries(rows.map((r) => [r.market, r.n]));
+  }
+
+  private async productCounts(ids: string[]): Promise<Record<string, number>> {
+    if (!ids.length) return {};
+    const rows: { id: string; n: number }[] = await this.products.query(
+      `SELECT "shopId" AS id, count(*)::int AS n FROM products WHERE status = 'ACTIVE' AND "shopId" = ANY($1::uuid[]) GROUP BY 1`, [ids],
+    );
+    return Object.fromEntries(rows.map((r) => [r.id, r.n]));
+  }
+
+  /** Page publique : boutique, nombre de produits et rayons (pour filtrer son catalogue) */
   async publicOne(slugOrId: string) {
     const s = await this.repo.createQueryBuilder('s').where('(s.slug = :v OR s.id::text = :v) AND s.status = :st', { v: slugOrId, st: ShopStatus.APPROVED }).getOne();
     if (!s) throw new NotFoundException('Boutique introuvable');
-    return this.publicView(s);
+    const rows: { id: string; name: string; n: number }[] = await this.products.query(
+      `SELECT c.id, c.name, count(*)::int AS n FROM products p JOIN categories c ON c.id = p."categoryId"
+        WHERE p."shopId" = $1 AND p.status = 'ACTIVE' GROUP BY c.id, c.name ORDER BY n DESC`, [s.id],
+    );
+    const { searchText: _s, ...view } = this.publicView(s);
+    void _s;
+    return { ...view, productCount: rows.reduce((t, r) => t + r.n, 0), shelves: rows.map((r) => ({ id: r.id, name: r.name, count: r.n })) };
   }
 }

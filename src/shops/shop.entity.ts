@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { BeforeInsert, BeforeUpdate, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { fold } from '../common/text';
 
 export enum ShopStatus {
   DRAFT = 'DRAFT', // en cours de remplissage dans l'app
@@ -60,6 +61,14 @@ export class Shop {
   @Column({ type: 'timestamptz', nullable: true }) reviewedAt: Date | null;
   @Column({ type: 'timestamptz', nullable: true }) submittedAt: Date | null;
   @Column({ type: 'jsonb', default: () => "'[]'" }) history: ShopEvent[];
+  /** Nom, marché, emplacement et description sans accents (recherche) */
+  @Column({ type: 'text', default: '' }) searchText: string;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  computeSearchText() {
+    this.searchText = fold([this.name, this.market, this.location, this.description].filter(Boolean).join(' '));
+  }
   @CreateDateColumn({ type: 'timestamptz' }) createdAt: Date;
   @UpdateDateColumn({ type: 'timestamptz' }) updatedAt: Date;
 }

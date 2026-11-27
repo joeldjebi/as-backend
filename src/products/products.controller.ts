@@ -41,6 +41,10 @@ class SearchDto {
   @IsOptional() @Transform(num) @IsInt() @Min(0) maxPrice?: number;
   @IsOptional() @IsIn(['new', 'price_asc', 'price_desc', 'popular']) sort?: 'new' | 'price_asc' | 'price_desc' | 'popular';
   @IsOptional() @Transform(num) @IsInt() @Min(1) @Max(500) page?: number;
+  @IsOptional() @IsString() @MaxLength(60) market?: string;
+  @IsOptional() @IsIn(['BOUTIQUE', 'GROSSISTE']) type?: 'BOUTIQUE' | 'GROSSISTE';
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === true) @IsBoolean() inStock?: boolean;
+  @IsOptional() @Transform(num) @IsInt() @Min(1) @Max(48) limit?: number;
 }
 class ReportDto {
   @IsString() @IsNotEmpty({ message: 'Motif obligatoire' }) @MaxLength(300) reason: string;
@@ -58,6 +62,13 @@ export class ProductsController {
   @Get('home')
   home(@Account() viewer?: User) {
     return this.service.home(viewer);
+  }
+
+  /** Suggestions pendant la frappe (rayons, boutiques, produits) */
+  @Public()
+  @Get('suggest')
+  suggest(@Query('q') q?: string) {
+    return this.service.suggest(typeof q === 'string' ? q.slice(0, 100) : '');
   }
 
   @Public()
