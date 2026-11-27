@@ -59,7 +59,8 @@ export class OrdersService {
 
   /** Bénéficiaire du paiement : la boutique (alias PI-SPI) ou Adjamé-Smart */
   private payee(shop: Shop) {
-    if (shop.payoutMode === 'DIRECT' && shop.pispiAlias) return { mode: 'DIRECT' as const, alias: shop.pispiAlias, payee: shop.name };
+    // Direct seulement si l'équipe l'autorise (sinon Adjamé-Smart encaisse, même si la boutique l'avait choisi)
+    if (shop.payoutMode === 'DIRECT' && shop.pispiAlias && (shop.directPayoutAllowed || this.settings.directPayoutForAll)) return { mode: 'DIRECT' as const, alias: shop.pispiAlias, payee: shop.name };
     return { mode: 'PLATFORM' as const, alias: this.settings.get('AS_PISPI_ALIAS') || null, payee: this.settings.get('AS_PISPI_NAME') || 'Adjamé-Smart' };
   }
 

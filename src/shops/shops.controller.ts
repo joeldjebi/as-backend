@@ -46,6 +46,9 @@ class ShopDto {
 class NoteDto {
   @IsString() @IsNotEmpty({ message: 'Motif obligatoire' }) @MaxLength(500) note: string;
 }
+class DirectPayoutDto {
+  @IsBoolean() allowed: boolean;
+}
 class FeaturedDto {
   @IsBoolean() featured: boolean;
 }
@@ -144,6 +147,12 @@ export class ShopsController {
   @Staff(StaffRole.SUPER_ADMIN, StaffRole.MODERATOR)
   async reactivate(@CurrentUser() u: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.reactivate(id, await this.by(u));
+  }
+
+  @Post('admin/:id/direct-payout')
+  @Staff(StaffRole.SUPER_ADMIN)
+  directPayout(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DirectPayoutDto) {
+    return this.service.setDirectPayout(id, dto.allowed);
   }
 
   @Post('admin/:id/featured')

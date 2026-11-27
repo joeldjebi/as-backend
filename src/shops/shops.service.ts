@@ -7,6 +7,7 @@ import { identityLink } from '../uploads/uploads.controller';
 import { User } from '../users/user.entity';
 import { fold } from '../common/text';
 import { Product } from '../products/product.entity';
+import { SettingsService } from '../settings/settings.service';
 import { Shop, ShopEvent, ShopStatus } from './shop.entity';
 
 export interface ShopListQuery {
@@ -44,7 +45,13 @@ export class ShopsService {
     @InjectRepository(Category) private categories: Repository<Category>,
     @InjectRepository(User) private users: Repository<User>,
     @InjectRepository(Product) private products: Repository<Product>,
+    private settings: SettingsService,
   ) {}
+
+  /** L'équipe autorise l'encaissement direct à cette boutique, ou à toutes */
+  canDirectPayout(s: Shop) {
+    return s.directPayoutAllowed || this.settings.directPayoutForAll;
+  }
 
   private async uniqueSlug(base: string, except?: string) {
     let slug = slugify(base);
@@ -59,6 +66,7 @@ export class ShopsService {
   view(s: Shop) {
     return {
       ...s,
+      canDirectPayout: this.canDirectPayout(s),
       ownerIdFrontLink: identityLink(s.ownerIdFrontUrl),
       ownerIdBackLink: identityLink(s.ownerIdBackUrl),
       required: REQUIRED.map(([k, label]) => ({ key: k, label, ok: s[k] != null && s[k] !== '' })),
@@ -111,6 +119,9 @@ export class ShopsService {
     if (dto.prepayPercent !== undefined) s.prepayPercent = dto.prepayPercent;
     if (dto.pispiAlias !== undefined) s.pispiAlias = dto.pispiAlias.trim() || null;
     if (dto.payoutMode !== undefined) {
+      if (dto.payoutMode === 'DIRECT' && !this.canDirectPayout(s)) {
+        throw new BadRequestException('L’encaissement direct n’est pas encore ouvert : Adjamé-Smart encaisse et confirme vos paiements pour vous');
+      }
       if (dto.payoutMode === 'DIRECT' && !s.pispiAlias) throw new BadRequestException('Indiquez votre alias PI-SPI pour être payé directement');
       s.payoutMode = dto.payoutMode;
     }
@@ -202,6 +213,16 @@ export class ShopsService {
   }
   reactivate(id: string, by: string) {
     return this.review(id, by, ShopStatus.APPROVED, 'REACTIVATED', [ShopStatus.SUSPENDED]);
+  }
+
+  /** Équipe : autoriser ou retirer l'encaissement direct (retiré : la boutique repasse « via Adjamé-Smart ») */
+  async setDirectPayout(id: string, allowed: boolean) {
+    const s = await this.repo.findOneBy({ id });
+    if (!s) throw new NotFoundException('Boutique introuvable');
+    s.directPayoutAllowed = allowed;
+    if (!allowed && !this.settings.directPayoutForAll) s.payoutMode = 'PLATFORM';
+    await this.repo.save(s);
+    return this.one(id);
   }
 
   async setFeatured(id: string, featured: boolean) {

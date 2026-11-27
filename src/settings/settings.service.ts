@@ -12,7 +12,7 @@ export class Setting {
 }
 
 /** Réglages gérés depuis le back-office (Super Admin) : la base d'abord, sinon le .env */
-export const MANAGED = ['LETO_API_URL', 'LETO_API_KEY', 'LETO_WEBHOOK_SECRET', 'AS_PISPI_ALIAS', 'AS_PISPI_NAME'] as const;
+export const MANAGED = ['LETO_API_URL', 'LETO_API_KEY', 'LETO_WEBHOOK_SECRET', 'AS_PISPI_ALIAS', 'AS_PISPI_NAME', 'DIRECT_PAYOUT_ALL'] as const;
 export type SettingKey = (typeof MANAGED)[number];
 export const SECRET_KEYS: SettingKey[] = ['LETO_API_KEY', 'LETO_WEBHOOK_SECRET'];
 
@@ -34,6 +34,11 @@ export class SettingsService implements OnModuleInit {
   source(key: SettingKey): 'backoffice' | 'env' | 'none' {
     if (this.cache.get(key)?.value) return 'backoffice';
     return process.env[key] ? 'env' : 'none';
+  }
+
+  /** Encaissement direct ouvert à toutes les boutiques (à activer avec la vérification automatique des paiements) */
+  get directPayoutForAll() {
+    return this.get('DIRECT_PAYOUT_ALL') === 'true';
   }
 
   meta(key: SettingKey) {

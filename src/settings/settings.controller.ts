@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { Repository } from 'typeorm';
 import { AuthUser, CurrentUser, Roles, Staff } from '../common/decorators';
 import { LetoService } from '../orders/leto.service';
@@ -14,6 +14,7 @@ class SettingsDto {
   @IsOptional() @IsString() @ValidateIf(empty) @Matches(/^whsec_[A-Za-z0-9]{16,}$/, { message: 'Secret de signature : il commence par whsec_' }) LETO_WEBHOOK_SECRET?: string;
   @IsOptional() @IsString() @MaxLength(60) AS_PISPI_ALIAS?: string;
   @IsOptional() @IsString() @MaxLength(80) AS_PISPI_NAME?: string;
+  @IsOptional() @IsIn(['true', 'false']) DIRECT_PAYOUT_ALL?: string;
 }
 
 /** Super Admin : livraison VITE (clé, secret) et encaissement Adjamé-Smart, modifiables sans toucher au serveur */

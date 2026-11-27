@@ -61,6 +61,8 @@ export class Shop {
   @Column({ type: 'varchar', length: 10, default: 'PLATFORM' }) payoutMode: 'DIRECT' | 'PLATFORM';
   /** Alias PI-SPI de la boutique (numéro Mobile Money ou alias) si DIRECT */
   @Column({ type: 'varchar', length: 60, nullable: true }) pispiAlias: string | null;
+  /** Encaissement direct autorisé par l'équipe (par défaut non : Adjamé-Smart encaisse et confirme) */
+  @Column({ default: false }) directPayoutAllowed: boolean;
   @Index() @Column({ type: 'varchar', length: 10, default: ShopStatus.DRAFT }) status: ShopStatus;
   @Column({ type: 'text', nullable: true }) reviewNote: string | null;
   @Column({ type: 'text', nullable: true }) reviewedBy: string | null;
