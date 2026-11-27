@@ -24,7 +24,8 @@ rsync -a --delete --exclude ".well-known" dist/ "$ADMIN_DIR/"
 chown -R "$CPUSER:$CPUSER" "$ADMIN_DIR"
 
 echo "== Vitrine (as.vite.ci) et espace boutique (boutique.vite.ci)"
-for pair in "vitrine:$VITRINE_DIR" "boutique:$BOUTIQUE_DIR"; do
+# npm run build compile aussi l'espace boutique dans dist-boutique/
+for pair in "vitrine:$VITRINE_DIR" "dist-boutique:$BOUTIQUE_DIR"; do
   src="${pair%%:*}"; dst="${pair#*:}"
   mkdir -p "$dst"
   rsync -a --delete --exclude ".well-known" "$src/" "$dst/"
